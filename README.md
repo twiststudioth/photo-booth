@@ -2,6 +2,8 @@
 
 ระบบโฟโตบูธสำหรับช่างภาพมืออาชีพ - เว็บแอปพลิเคชันที่ช่วยให้คุณสร้างโฟโตบูธสำหรับงานอีเว้นท์ต่างๆ ได้อย่างง่ายดาย
 
+> 🎬 **Developed by [Twist Studio](https://www.facebook.com/twist.studio.th)**
+
 ## ✨ คุณสมบัติหลัก
 
 ### 📱 ฝั่ง User
@@ -296,3 +298,15 @@ MIT License - ใช้งานได้อย่างอิสระ
 ---
 
 **สนุกกับการใช้งาน Photo Booth! 📸✨**
+
+---
+
+## 🎬 About Twist Studio
+
+**Twist Studio** เป็นสตูดิโอที่เชี่ยวชาญด้านการถ่ายภาพและวิดีโอสำหรับงานอีเว้นท์ต่างๆ พัฒนาระบบ Photo Booth นี้เพื่อให้ช่างภาพมืออาชีพสามารถให้บริการได้อย่างมีประสิทธิภาพ
+
+📱 **ติดตามเราได้ที่**: [Facebook - Twist Studio](https://www.facebook.com/twist.studio.th)
+
+---
+
+Made with ❤️ by **Twist Studio**

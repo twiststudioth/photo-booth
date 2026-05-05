@@ -1306,3 +1306,34 @@ body {
     padding: 10px 16px;
   }
 }
+
+/* App Footer */
+.app-footer {
+  text-align: center;
+  padding: 24px 20px;
+  margin-top: 40px;
+  border-top: 2px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+.app-footer a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.app-footer a:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.welcome-screen .app-footer {
+  border-top: none;
+  margin-top: 60px;
+}

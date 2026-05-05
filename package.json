@@ -11,9 +11,10 @@
   "keywords": [
     "photobooth",
     "photography",
-    "event"
+    "event",
+    "twist-studio"
   ],
-  "author": "",
+  "author": "Twist Studio (https://www.facebook.com/twist.studio.th)",
   "license": "MIT",
   "dependencies": {
     "compression": "^1.7.4",
