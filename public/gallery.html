@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>แกลเลอรี่ - Photo Booth</title>
+  <link rel="stylesheet" href="/fonts/pridi.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="gallery-header">
+      <h1>แกลเลอรี่รูปภาพ</h1>
+      <div class="header-actions">
+        <h2 id="eventName" class="event-name"></h2>
+      </div>
+    </header>
+
+    <div class="gallery-info">
+      <p>💡 คลิกที่รูปเพื่อดูแบบเต็มจอและดาวน์โหลด</p>
+    </div>
+
+    <div id="loadingScreen" class="loading-screen">
+      <div class="spinner"></div>
+      <p>กำลังโหลดรูปภาพ...</p>
+    </div>
+
+    <div id="galleryContent" style="display: none;">
+      <div id="photoSets" class="photo-sets-grid"></div>
+      
+      <div id="emptyState" class="empty-state" style="display: none;">
+        <p>ยังไม่มีรูปภาพในอีเว้นท์นี้</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Viewer Modal -->
+  <div id="photoViewerModal" class="modal photo-viewer-modal">
+    <div class="modal-content modal-fullscreen">
+      <button class="close-btn">&times;</button>
+      
+      <div class="photo-viewer">
+        <button class="nav-btn prev-btn">‹</button>
+        <div class="photo-display">
+          <img id="currentPhoto" alt="Photo">
+        </div>
+        <button class="nav-btn next-btn">›</button>
+      </div>
+      
+      <div class="photo-info">
+        <span id="photoIndex">1 / 5</span>
+      </div>
+      
+      <div class="viewer-actions">
+        <button id="downloadCurrentBtn" class="btn btn-primary">📥 ดาวน์โหลดรูปนี้</button>
+        <button id="deleteSetBtn" class="btn btn-danger" style="display: none;">🗑️ ลบชุดรูป</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/gallery.js"></script>
+</body>
+</html>
