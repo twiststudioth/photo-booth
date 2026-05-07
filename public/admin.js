@@ -86,10 +86,10 @@ async function loadEvents() {
       card.className = 'event-card';
       card.innerHTML = `
         <h3>${event.name}</h3>
-        <p>📁 Prefix: ${event.filePrefix}</p>
-        <p>📸 รูปทั้งหมด: ${event.photoCounter || 0} ชุด</p>
-        <p>🖼️ กรอบ: ${event.frames?.length || 0} กรอบ</p>
-        <p>📅 ${new Date(event.createdAt).toLocaleDateString('th-TH')}</p>
+        <p>Prefix: ${event.filePrefix}</p>
+        <p>รูปทั้งหมด: ${event.photoCounter || 0} ชุด</p>
+        <p>กรอบ: ${event.frames?.length || 0} กรอบ</p>
+        <p>${new Date(event.createdAt).toLocaleDateString('th-TH')}</p>
         <div class="event-card-actions">
           <button class="btn-icon btn-capture" data-event-id="${event.id}" title="เปิดหน้าถ่ายรูป">
             📸
@@ -200,7 +200,7 @@ async function showEventDetail(eventId) {
         frameDiv.innerHTML = `
           <img src="${frame.path}" alt="${frame.name}">
           <button class="frame-delete-btn" data-event-id="${event.id}" data-frame-id="${frame.id}" title="ลบกรอบ">
-            🗑️
+            ลบ
           </button>
         `;
         framesList.appendChild(frameDiv);

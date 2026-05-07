@@ -51,7 +51,7 @@ async function init() {
     }
     
     eventData = await response.json();
-    document.getElementById('eventTitle').textContent = `📸 ${eventData.name}`;
+    document.getElementById('eventTitle').textContent = eventData.name;
     
     // Initialize camera
     await initCamera();
@@ -320,7 +320,7 @@ function showFrameSelection() {
     
     const label = document.createElement('div');
     label.className = 'frame-preview-label';
-    label.textContent = frame.name || `กรอบที่ ${index + 1}`;
+    label.textContent = `กรอบที่ ${index + 1}`;
     
     card.appendChild(canvas);
     card.appendChild(label);
@@ -400,7 +400,7 @@ document.getElementById('backToPhotosBtn').addEventListener('click', () => {
     // Reset save button
     const saveBtn = document.getElementById('savePhotosBtn');
     saveBtn.disabled = false;
-    saveBtn.innerHTML = '💾 บันทึกรูป';
+    saveBtn.innerHTML = 'บันทึกรูป';
     
     // Reset UI
     frameSelectionScreen.style.display = 'none';
@@ -433,7 +433,7 @@ document.getElementById('savePhotosBtn').addEventListener('click', async () => {
   
   try {
     saveBtn.disabled = true;
-    saveBtn.innerHTML = '⏳ กำลังบันทึก...';
+    saveBtn.innerHTML = 'กำลังบันทึก...';
     
     const response = await fetch(`/api/events/${eventId}/photos`, {
       method: 'POST',
@@ -481,7 +481,7 @@ document.getElementById('takeMoreBtn').addEventListener('click', () => {
   // Reset save button
   const saveBtn = document.getElementById('savePhotosBtn');
   saveBtn.disabled = false;
-  saveBtn.innerHTML = '💾 บันทึกรูป';
+  saveBtn.innerHTML = 'บันทึกรูป';
   
   // Reset UI
   successScreen.style.display = 'none';

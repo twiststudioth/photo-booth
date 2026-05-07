@@ -10,7 +10,7 @@
 <body>
   <div id="loginScreen" class="container">
     <div class="login-box">
-      <h1>🔐 เข้าสู่ระบบผู้ดูแล</h1>
+      <h1>เข้าสู่ระบบผู้ดูแล</h1>
       <form id="loginForm">
         <div class="form-group">
           <label>ชื่อผู้ใช้</label>
@@ -29,14 +29,14 @@
 
   <div id="adminPanel" class="container" style="display: none;">
     <header class="admin-header">
-      <h1>📊 Admin Panel</h1>
+      <h1>Admin Panel</h1>
       <button id="logoutBtn" class="btn btn-secondary">ออกจากระบบ</button>
     </header>
 
     <div class="admin-content">
       <div class="section">
         <div class="section-header">
-          <h2>🎉 จัดการอีเว้นท์</h2>
+          <h2>จัดการอีเว้นท์</h2>
           <button id="createEventBtn" class="btn btn-primary">+ สร้างอีเว้นท์ใหม่</button>
         </div>
         <div id="eventsList" class="events-grid"></div>
@@ -82,25 +82,25 @@
       </div>
       <div class="event-detail-content">
         <div class="detail-section">
-          <h3>📋 ข้อมูลอีเว้นท์</h3>
+          <h3>ข้อมูลอีเว้นท์</h3>
           <div id="eventInfo"></div>
         </div>
 
         <div class="detail-section">
-          <h3>🔗 ลิงก์สำหรับแชร์</h3>
+          <h3>ลิงก์สำหรับแชร์</h3>
           <div class="link-section">
             <div class="link-item">
-              <label>📸 ลิงก์ถ่ายรูป:</label>
+              <label>ลิงก์ถ่ายรูป:</label>
               <div class="link-input-group">
                 <input type="text" id="captureLink" readonly class="link-input">
-                <button id="copyCaptureLink" class="btn btn-secondary btn-small">📋 คัดลอก</button>
+                <button id="copyCaptureLink" class="btn btn-secondary btn-small">คัดลอก</button>
               </div>
             </div>
             <div class="link-item">
-              <label>🖼️ ลิงก์ดูรูปทั้งหมด:</label>
+              <label>ลิงก์ดูรูปทั้งหมด:</label>
               <div class="link-input-group">
                 <input type="text" id="galleryLink" readonly class="link-input">
-                <button id="copyGalleryLink" class="btn btn-secondary btn-small">📋 คัดลอก</button>
+                <button id="copyGalleryLink" class="btn btn-secondary btn-small">คัดลอก</button>
               </div>
             </div>
           </div>
@@ -108,7 +108,7 @@
         
         
         <div class="detail-section">
-          <h3>🖼️ กรอบรูป</h3>
+          <h3>กรอบรูป</h3>
           <div class="frame-upload">
             <input type="file" id="frameUpload" accept="image/*" style="display: none;">
             <button id="uploadFrameBtn" class="btn btn-primary">+ อัพโหลดกรอบ</button>
@@ -123,7 +123,7 @@
   </div>
 
   <footer class="app-footer">
-    <p>Powered by <a href="https://www.facebook.com/twist.studio.th" target="_blank" rel="noopener noreferrer">🎬 Twist Studio</a></p>
+    <p>Powered by <a href="https://www.facebook.com/twist.studio.th" target="_blank" rel="noopener noreferrer">Twist Studio</a></p>
   </footer>
 
   <script src="/admin.js"></script>
