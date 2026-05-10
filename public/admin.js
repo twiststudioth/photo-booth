@@ -328,7 +328,8 @@ async function deletePhotoSet(photoId) {
     });
     
     if (response.ok) {
-      await loadEventPhotos(currentEvent.id);
+      // Reload photos if needed
+      showToast('ลบรูปสำเร็จ');
     } else {
       alert('ลบรูปไม่สำเร็จ');
     }
@@ -375,3 +376,406 @@ async function deleteFrame(eventId, frameId) {
 }
 
 
+
+
+// ===== FRAME EDITOR =====
+const frameEditorModal = document.getElementById('frameEditorModal');
+const frameCanvas = document.getElementById('frameCanvas');
+const ctx = frameCanvas.getContext('2d');
+
+let textElements = [];
+let selectedTextIndex = -1;
+let bgImage = null;
+let isTransparent = false;
+let showPhotoAreas = true;
+
+// Photo areas configuration (3 photos: 600x400 each, no margins, 300px top/bottom space)
+// Total: 600x1800 (top 300 + photo1 400 + photo2 400 + photo3 400 + bottom 300 = 1800)
+const photoAreas = [
+  { x: 0, y: 300, width: 600, height: 400 },    // Photo 1 (ชิดขอบซ้าย-ขวา)
+  { x: 0, y: 700, width: 600, height: 400 },    // Photo 2 (ชิดขอบซ้าย-ขวา)
+  { x: 0, y: 1100, width: 600, height: 400 }    // Photo 3 (ชิดขอบซ้าย-ขวา)
+];
+
+// Open frame editor
+document.getElementById('createFrameBtn').addEventListener('click', () => {
+  frameEditorModal.classList.add('active');
+  initCanvas();
+});
+
+// Initialize canvas
+function initCanvas() {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, frameCanvas.width, frameCanvas.height);
+  textElements = [];
+  selectedTextIndex = -1;
+  bgImage = null;
+  isTransparent = false;
+  showPhotoAreas = true;
+  document.getElementById('showPhotoAreas').checked = true;
+  updateTextList();
+  redrawCanvas();
+}
+
+// Background color
+document.getElementById('bgColor').addEventListener('change', (e) => {
+  isTransparent = false;
+  redrawCanvas();
+});
+
+// Transparent background
+document.getElementById('bgTransparent').addEventListener('click', () => {
+  isTransparent = true;
+  redrawCanvas();
+});
+
+// Show/hide photo areas
+document.getElementById('showPhotoAreas').addEventListener('change', (e) => {
+  showPhotoAreas = e.target.checked;
+  redrawCanvas();
+});
+
+// Background image upload
+document.getElementById('uploadBgImageBtn').addEventListener('click', () => {
+  document.getElementById('bgImageUpload').click();
+});
+
+document.getElementById('bgImageUpload').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const img = new Image();
+    img.onload = () => {
+      bgImage = img;
+      redrawCanvas();
+    };
+    img.src = event.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('clearBgImageBtn').addEventListener('click', () => {
+  bgImage = null;
+  redrawCanvas();
+});
+
+// Font size slider
+document.getElementById('fontSize').addEventListener('input', (e) => {
+  document.getElementById('fontSizeValue').textContent = e.target.value + 'px';
+});
+
+// Add text
+document.getElementById('addTextBtn').addEventListener('click', () => {
+  const text = document.getElementById('textInput').value.trim();
+  if (!text) {
+    alert('กรุณาพิมพ์ข้อความ');
+    return;
+  }
+  
+  const textElement = {
+    text: text,
+    x: frameCanvas.width / 2,
+    y: 150 + (textElements.length * 80),  // เริ่มที่ 150px (ในพื้นที่บน 300px)
+    color: document.getElementById('textColor').value,
+    size: parseInt(document.getElementById('fontSize').value),
+    font: document.getElementById('fontFamily').value,
+    bold: document.getElementById('textBold').checked,
+    italic: document.getElementById('textItalic').checked
+  };
+  
+  textElements.push(textElement);
+  document.getElementById('textInput').value = '';
+  updateTextList();
+  redrawCanvas();
+});
+
+// Update text list
+function updateTextList() {
+  const textList = document.getElementById('textList');
+  textList.innerHTML = '';
+  
+  if (textElements.length === 0) {
+    textList.innerHTML = '<p style="color: var(--text-secondary); font-size: 14px;">ยังไม่มีข้อความ</p>';
+    return;
+  }
+  
+  textElements.forEach((textEl, index) => {
+    const item = document.createElement('div');
+    item.className = 'text-list-item';
+    
+    const textPreview = document.createElement('div');
+    textPreview.className = 'text-preview';
+    textPreview.style.color = textEl.color;
+    textPreview.textContent = textEl.text;
+    
+    const textActions = document.createElement('div');
+    textActions.className = 'text-actions';
+    
+    const btnUp = document.createElement('button');
+    btnUp.className = 'btn-icon-small';
+    btnUp.textContent = '↑';
+    btnUp.title = 'เลื่อนขึ้น';
+    btnUp.dataset.index = index;
+    btnUp.dataset.action = 'up';
+    
+    const btnDown = document.createElement('button');
+    btnDown.className = 'btn-icon-small';
+    btnDown.textContent = '↓';
+    btnDown.title = 'เลื่อนลง';
+    btnDown.dataset.index = index;
+    btnDown.dataset.action = 'down';
+    
+    const btnDelete = document.createElement('button');
+    btnDelete.className = 'btn-icon-small';
+    btnDelete.textContent = '🗑️';
+    btnDelete.title = 'ลบ';
+    btnDelete.dataset.index = index;
+    btnDelete.dataset.action = 'delete';
+    
+    textActions.appendChild(btnUp);
+    textActions.appendChild(btnDown);
+    textActions.appendChild(btnDelete);
+    
+    item.appendChild(textPreview);
+    item.appendChild(textActions);
+    textList.appendChild(item);
+  });
+  
+  // Add event listeners to all buttons
+  document.querySelectorAll('#textList .btn-icon-small').forEach(btn => {
+    btn.addEventListener('click', handleTextAction);
+  });
+}
+
+// Handle text actions
+function handleTextAction(e) {
+  const index = parseInt(e.currentTarget.dataset.index);
+  const action = e.currentTarget.dataset.action;
+  
+  if (action === 'up') {
+    moveTextUp(index);
+  } else if (action === 'down') {
+    moveTextDown(index);
+  } else if (action === 'delete') {
+    deleteText(index);
+  }
+}
+
+// Move text up
+function moveTextUp(index) {
+  if (index > 0) {
+    [textElements[index], textElements[index - 1]] = [textElements[index - 1], textElements[index]];
+    updateTextList();
+    redrawCanvas();
+  }
+}
+
+// Move text down
+function moveTextDown(index) {
+  if (index < textElements.length - 1) {
+    [textElements[index], textElements[index + 1]] = [textElements[index + 1], textElements[index]];
+    updateTextList();
+    redrawCanvas();
+  }
+}
+
+// Delete text
+function deleteText(index) {
+  textElements.splice(index, 1);
+  updateTextList();
+  redrawCanvas();
+}
+
+// Redraw canvas
+function redrawCanvas() {
+  // Clear canvas
+  ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+  
+  // Background
+  if (isTransparent) {
+    // Draw checkerboard pattern for transparency
+    const squareSize = 20;
+    for (let y = 0; y < frameCanvas.height; y += squareSize) {
+      for (let x = 0; x < frameCanvas.width; x += squareSize) {
+        ctx.fillStyle = ((x / squareSize + y / squareSize) % 2 === 0) ? '#cccccc' : '#ffffff';
+        ctx.fillRect(x, y, squareSize, squareSize);
+      }
+    }
+  } else {
+    ctx.fillStyle = document.getElementById('bgColor').value;
+    ctx.fillRect(0, 0, frameCanvas.width, frameCanvas.height);
+  }
+  
+  // Background image
+  if (bgImage) {
+    ctx.drawImage(bgImage, 0, 0, frameCanvas.width, frameCanvas.height);
+  }
+  
+  // Draw photo areas (if enabled)
+  if (showPhotoAreas) {
+    photoAreas.forEach((area, index) => {
+      // Semi-transparent pink overlay
+      ctx.fillStyle = 'rgba(255, 182, 193, 0.3)';
+      ctx.fillRect(area.x, area.y, area.width, area.height);
+      
+      // Border
+      ctx.strokeStyle = '#ff69b4';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 5]);
+      ctx.strokeRect(area.x, area.y, area.width, area.height);
+      ctx.setLineDash([]);
+      
+      // Label
+      ctx.fillStyle = '#ff1493';
+      ctx.font = 'bold 40px Pridi';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`รูปที่ ${index + 1}`, area.x + area.width / 2, area.y + area.height / 2);
+    });
+  }
+  
+  // Draw text elements
+  textElements.forEach((textEl) => {
+    ctx.fillStyle = textEl.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    let fontStyle = '';
+    if (textEl.italic) fontStyle += 'italic ';
+    if (textEl.bold) fontStyle += 'bold ';
+    
+    ctx.font = `${fontStyle}${textEl.size}px ${textEl.font}`;
+    ctx.fillText(textEl.text, textEl.x, textEl.y);
+  });
+}
+
+// Clear canvas
+document.getElementById('clearCanvasBtn').addEventListener('click', () => {
+  if (confirm('ต้องการล้างทั้งหมดหรือไม่?')) {
+    initCanvas();
+  }
+});
+
+// Save frame
+document.getElementById('saveFrameBtn').addEventListener('click', async () => {
+  if (!currentEvent) {
+    alert('กรุณาเลือกอีเว้นท์ก่อน');
+    return;
+  }
+  
+  // Create final canvas WITHOUT photo areas overlay
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = frameCanvas.width;
+  finalCanvas.height = frameCanvas.height;
+  const finalCtx = finalCanvas.getContext('2d');
+  
+  // Background
+  if (!isTransparent) {
+    finalCtx.fillStyle = document.getElementById('bgColor').value;
+    finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+  }
+  
+  // Background image
+  if (bgImage) {
+    finalCtx.drawImage(bgImage, 0, 0, finalCanvas.width, finalCanvas.height);
+  }
+  
+  // Draw text elements (NO photo areas in final output)
+  textElements.forEach((textEl) => {
+    finalCtx.fillStyle = textEl.color;
+    finalCtx.textAlign = 'center';
+    finalCtx.textBaseline = 'middle';
+    
+    let fontStyle = '';
+    if (textEl.italic) fontStyle += 'italic ';
+    if (textEl.bold) fontStyle += 'bold ';
+    
+    finalCtx.font = `${fontStyle}${textEl.size}px ${textEl.font}`;
+    finalCtx.fillText(textEl.text, textEl.x, textEl.y);
+  });
+  
+  // Convert to data URL
+  const frameData = finalCanvas.toDataURL('image/png');
+  const frameName = `custom_frame_${Date.now()}.png`;
+  
+  try {
+    const response = await fetch(`/api/events/${currentEvent.id}/frames`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        frameData: frameData,
+        frameName: frameName
+      })
+    });
+    
+    if (response.ok) {
+      frameEditorModal.classList.remove('active');
+      await showEventDetail(currentEvent.id);
+      showToast('บันทึกกรอบสำเร็จ');
+    } else {
+      alert('บันทึกกรอบไม่สำเร็จ');
+    }
+  } catch (error) {
+    alert('เกิดข้อผิดพลาด');
+  }
+});
+
+// Canvas drag for text (optional enhancement)
+let isDragging = false;
+let dragIndex = -1;
+
+frameCanvas.addEventListener('mousedown', (e) => {
+  const rect = frameCanvas.getBoundingClientRect();
+  const scaleX = frameCanvas.width / rect.width;
+  const scaleY = frameCanvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  
+  // Check if clicked on text
+  for (let i = textElements.length - 1; i >= 0; i--) {
+    const textEl = textElements[i];
+    ctx.font = `${textEl.bold ? 'bold ' : ''}${textEl.italic ? 'italic ' : ''}${textEl.size}px ${textEl.font}`;
+    const metrics = ctx.measureText(textEl.text);
+    const textWidth = metrics.width;
+    const textHeight = textEl.size;
+    
+    if (x >= textEl.x - textWidth / 2 && x <= textEl.x + textWidth / 2 &&
+        y >= textEl.y - textHeight / 2 && y <= textEl.y + textHeight / 2) {
+      isDragging = true;
+      dragIndex = i;
+      frameCanvas.style.cursor = 'move';
+      break;
+    }
+  }
+});
+
+frameCanvas.addEventListener('mousemove', (e) => {
+  if (!isDragging || dragIndex === -1) return;
+  
+  const rect = frameCanvas.getBoundingClientRect();
+  const scaleX = frameCanvas.width / rect.width;
+  const scaleY = frameCanvas.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  
+  textElements[dragIndex].x = x;
+  textElements[dragIndex].y = y;
+  redrawCanvas();
+});
+
+frameCanvas.addEventListener('mouseup', () => {
+  isDragging = false;
+  dragIndex = -1;
+  frameCanvas.style.cursor = 'default';
+});
+
+frameCanvas.addEventListener('mouseleave', () => {
+  isDragging = false;
+  dragIndex = -1;
+  frameCanvas.style.cursor = 'default';
+});

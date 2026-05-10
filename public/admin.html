@@ -112,12 +112,100 @@
           <div class="frame-upload">
             <input type="file" id="frameUpload" accept="image/*" style="display: none;">
             <button id="uploadFrameBtn" class="btn btn-primary">+ อัพโหลดกรอบ</button>
+            <button id="createFrameBtn" class="btn btn-primary">🎨 สร้างกรอบใหม่</button>
           </div>
           <div id="framesList" class="frames-grid"></div>
         </div>
       </div>
       <div class="modal-actions">
         <button id="deleteEventBtn" class="btn btn-danger">ลบอีเว้นท์</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Frame Editor Modal -->
+  <div id="frameEditorModal" class="modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2>สร้างกรอบรูป</h2>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="frame-editor-container">
+        <div class="editor-sidebar">
+          <h3>เครื่องมือ</h3>
+          
+          <div class="tool-section">
+            <h4>📐 ขนาดกรอบ (Fixed)</h4>
+            <p class="tool-info">600 x 1800 px (2x6")</p>
+          </div>
+
+          <div class="tool-section">
+            <h4>📸 แสดงพื้นที่รูป</h4>
+            <label>
+              <input type="checkbox" id="showPhotoAreas" checked> แสดงตำแหน่งรูป 3 แอค
+            </label>
+            <p class="tool-info" style="margin-top: 8px; font-size: 12px;">พื้นที่สีชมพูคือตำแหน่งที่รูปจะปรากฏ (600x400px แต่ละแอค)</p>
+          </div>
+
+          <div class="tool-section">
+            <h4>🎨 สีพื้นหลัง</h4>
+            <input type="color" id="bgColor" value="#ffffff">
+            <button id="bgTransparent" class="btn btn-small">โปร่งใส</button>
+          </div>
+
+          <div class="tool-section">
+            <h4>🖼️ รูปพื้นหลัง</h4>
+            <input type="file" id="bgImageUpload" accept="image/*" style="display: none;">
+            <button id="uploadBgImageBtn" class="btn btn-small">เลือกรูป</button>
+            <button id="clearBgImageBtn" class="btn btn-small">ลบรูป</button>
+          </div>
+
+          <div class="tool-section">
+            <h4>✏️ เพิ่มข้อความ</h4>
+            <input type="text" id="textInput" placeholder="พิมพ์ข้อความ...">
+            <div class="text-controls">
+              <label>สี:</label>
+              <input type="color" id="textColor" value="#000000">
+            </div>
+            <div class="text-controls">
+              <label>ขนาด:</label>
+              <input type="range" id="fontSize" min="20" max="200" value="60">
+              <span id="fontSizeValue">60px</span>
+            </div>
+            <div class="text-controls">
+              <label>ฟอนต์:</label>
+              <select id="fontFamily">
+                <option value="Pridi">Pridi</option>
+                <option value="Arial">Arial</option>
+                <option value="Impact">Impact</option>
+                <option value="Comic Sans MS">Comic Sans MS</option>
+              </select>
+            </div>
+            <div class="text-controls">
+              <label>
+                <input type="checkbox" id="textBold"> ตัวหนา
+              </label>
+              <label>
+                <input type="checkbox" id="textItalic"> ตัวเอียง
+              </label>
+            </div>
+            <button id="addTextBtn" class="btn btn-primary">เพิ่มข้อความ</button>
+          </div>
+
+          <div class="tool-section">
+            <h4>📝 ข้อความที่เพิ่ม</h4>
+            <div id="textList"></div>
+          </div>
+
+          <div class="tool-section">
+            <button id="saveFrameBtn" class="btn btn-success">💾 บันทึกกรอบ</button>
+            <button id="clearCanvasBtn" class="btn btn-secondary">🗑️ ล้างทั้งหมด</button>
+          </div>
+        </div>
+
+        <div class="editor-canvas-container">
+          <canvas id="frameCanvas" width="600" height="1800"></canvas>
+        </div>
       </div>
     </div>
   </div>

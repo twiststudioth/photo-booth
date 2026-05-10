@@ -1348,3 +1348,234 @@ body {
   border-top: none;
   margin-top: 60px;
 }
+
+
+/* Frame Editor */
+.frame-editor-container {
+  display: flex;
+  gap: 24px;
+  min-height: 70vh;
+}
+
+.editor-sidebar {
+  width: 320px;
+  background: var(--background);
+  padding: 20px;
+  border-radius: 8px;
+  overflow-y: auto;
+  max-height: 80vh;
+}
+
+.editor-sidebar h3 {
+  margin-bottom: 20px;
+  color: var(--primary-color);
+  font-size: 20px;
+}
+
+.tool-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 2px solid var(--border);
+}
+
+.tool-section:last-child {
+  border-bottom: none;
+}
+
+.tool-section h4 {
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.tool-info {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0;
+}
+
+.tool-section input[type="color"] {
+  width: 100%;
+  height: 50px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.tool-section input[type="text"] {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.tool-section input[type="range"] {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.tool-section select {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.text-controls {
+  margin-bottom: 12px;
+}
+
+.text-controls label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.text-controls input[type="checkbox"] {
+  margin-right: 6px;
+  cursor: pointer;
+}
+
+.tool-section label {
+  cursor: pointer;
+  user-select: none;
+}
+
+.editor-canvas-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: var(--background);
+  border-radius: 8px;
+  padding: 20px;
+  overflow: auto;
+}
+
+#frameCanvas {
+  max-width: 100%;
+  max-height: 80vh;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  background: white;
+  cursor: default;
+  width: auto;
+  height: auto;
+}
+
+.text-list-item {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.text-preview {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon-small {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.btn-icon-small:hover {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+  transform: scale(1.1);
+}
+
+.btn-success {
+  background: var(--success-color);
+  color: white;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.btn-success:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.frame-upload {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+/* Responsive Frame Editor */
+@media (max-width: 1024px) {
+  .frame-editor-container {
+    flex-direction: column;
+  }
+  
+  .editor-sidebar {
+    width: 100%;
+    max-height: none;
+  }
+  
+  .editor-canvas-container {
+    min-height: 400px;
+  }
+  
+  #frameCanvas {
+    max-height: 60vh;
+  }
+}
+
+@media (max-width: 768px) {
+  .editor-sidebar {
+    padding: 16px;
+  }
+  
+  .editor-sidebar h3 {
+    font-size: 18px;
+  }
+  
+  .tool-section h4 {
+    font-size: 14px;
+  }
+  
+  .editor-canvas-container {
+    padding: 12px;
+  }
+  
+  #frameCanvas {
+    max-height: 50vh;
+  }
+}
