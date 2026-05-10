@@ -35,9 +35,10 @@
 ### ความต้องการของระบบ
 - Node.js 18 หรือสูงกว่า
 - npm หรือ yarn
-- บัญชี Cloudinary (สำหรับเก็บรูปภาพ)
+- บัญชี Cloudinary (สำหรับเก็บรูปภาพและข้อมูล)
+- **สำหรับ Vercel**: บัญชี Vercel (ฟรี) - ดู [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)
 
-### ขั้นตอนการติดตั้ง
+### ขั้นตอนการติดตั้ง (Local Development)
 
 1. **Clone หรือดาวน์โหลดโปรเจกต์**
 ```bash
@@ -65,10 +66,21 @@ npm install
 npm start
 ```
 
+**หมายเหตุ**: ระบบจะใช้ Cloudinary สำหรับเก็บข้อมูลทั้ง local และ production
+
 5. **เปิดเบราว์เซอร์**
 - หน้าแรก: http://localhost:3000
 - Admin Panel: http://localhost:3000/admin
 - แกลเลอรี่: http://localhost:3000/gallery.html
+
+### 🚀 Deploy ไปยัง Vercel
+
+ดูคู่มือการ deploy แบบละเอียดที่ [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)
+
+**สรุปขั้นตอน:**
+1. ตั้งค่า environment variables ใน Vercel (Cloudinary credentials)
+2. Deploy ด้วย `vercel` หรือ push ไปยัง Git
+3. **ไม่ต้องเสียเงินเพิ่ม** - ใช้ Cloudinary free tier เก็บทั้งรูปและข้อมูล!
 
 ## 📖 คู่มือการใช้งาน (Admin)
 
@@ -217,10 +229,14 @@ const bottomMargin = 300;
 photobooth-app/
 ├── server.js              # Express server
 ├── package.json           # Dependencies
-├── .env                   # Environment variables (Cloudinary config)
+├── vercel.json           # Vercel configuration
+├── .env                   # Environment variables
 ├── .env.example          # ตัวอย่างการตั้งค่า
 ├── README.md             # คู่มือนี้
+├── VERCEL_DEPLOYMENT.md  # คู่มือ deploy ไปยัง Vercel
 ├── ADMIN_GUIDE.md        # คู่มือ admin โดยละเอียด
+├── lib/
+│   └── db.js             # Vercel KV database helpers
 ├── public/               # Frontend files
 │   ├── index.html        # หน้าแรก
 │   ├── admin.html        # Admin panel
@@ -230,12 +246,16 @@ photobooth-app/
 │   ├── admin.js          # Admin logic
 │   ├── capture.js        # Capture logic
 │   └── gallery.js        # Gallery logic
-└── data/                 # JSON database
+└── data/                 # JSON database (local only)
     ├── events.json       # Events data
-    └── photos.json       # Photos data (URLs to Cloudinary)
+    └── photos.json       # Photos data
+
 ```
 
-**หมายเหตุ**: รูปภาพทั้งหมดถูกเก็บบน Cloudinary แทนที่จะเก็บใน local server
+**หมายเหตุ**: 
+- รูปภาพและข้อมูลทั้งหมดถูกเก็บบน Cloudinary
+- **ทั้ง Local และ Production** ใช้ Cloudinary เดียวกัน - ข้อมูล sync อัตโนมัติ!
+- ไม่ต้องเสียเงินเพิ่ม - ใช้ Cloudinary free tier
 
 ## 🐛 การแก้ปัญหา
 

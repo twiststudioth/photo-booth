@@ -4,15 +4,16 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import fs from 'fs/promises';
-import { existsSync } from 'fs';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
+import dotenv from 'dotenv';
 import { v2 as cloudinary } from 'cloudinary';
-
-// Load environment variables
 import sharp from 'sharp';
 import GIFEncoder from 'gif-encoder-2';
+import * as db from './lib/db.js';
+
+// Load environment variables
+dotenv.config();
 
 // Configure Cloudinary
 cloudinary.config({
@@ -56,39 +57,6 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Static files
 app.use(express.static('public'));
-app.use('/uploads', express.static('uploads'));
-
-// Ensure directories exist
-const ensureDirectories = async () => {
-  const dirs = ['data'];
-  for (const dir of dirs) {
-    if (!existsSync(dir)) {
-      await fs.mkdir(dir, { recursive: true });
-    }
-  }
-  
-  // Initialize data files
-  if (!existsSync('data/events.json')) {
-    await fs.writeFile('data/events.json', JSON.stringify([]));
-  }
-  if (!existsSync('data/photos.json')) {
-    await fs.writeFile('data/photos.json', JSON.stringify([]));
-  }
-};
-
-// Helper functions
-const readJSON = async (filename) => {
-  try {
-    const data = await fs.readFile(filename, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return [];
-  }
-};
-
-const writeJSON = async (filename, data) => {
-  await fs.writeFile(filename, JSON.stringify(data, null, 2));
-};
 
 // Simple auth middleware
 const authMiddleware = (req, res, next) => {
@@ -126,7 +94,7 @@ app.post('/api/admin/login', (req, res) => {
 // Get all events
 app.get('/api/events', async (req, res) => {
   try {
-    const events = await readJSON('data/events.json');
+    const events = await db.getAllEvents();
     res.json(events);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch events' });
@@ -136,8 +104,7 @@ app.get('/api/events', async (req, res) => {
 // Get single event
 app.get('/api/events/:id', async (req, res) => {
   try {
-    const events = await readJSON('data/events.json');
-    const event = events.find(e => e.id === req.params.id);
+    const event = await db.getEventById(req.params.id);
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
@@ -150,7 +117,6 @@ app.get('/api/events/:id', async (req, res) => {
 // Create event (admin only)
 app.post('/api/events', authMiddleware, async (req, res) => {
   try {
-    const events = await readJSON('data/events.json');
     const newEvent = {
       id: uuidv4(),
       name: req.body.name,
@@ -166,8 +132,7 @@ app.post('/api/events', authMiddleware, async (req, res) => {
     const qrCode = await QRCode.toDataURL(eventUrl);
     newEvent.qrCode = qrCode;
     
-    events.push(newEvent);
-    await writeJSON('data/events.json', events);
+    await db.createEvent(newEvent);
     
     res.json(newEvent);
   } catch (error) {
@@ -178,17 +143,13 @@ app.post('/api/events', authMiddleware, async (req, res) => {
 // Update event (admin only)
 app.put('/api/events/:id', authMiddleware, async (req, res) => {
   try {
-    const events = await readJSON('data/events.json');
-    const index = events.findIndex(e => e.id === req.params.id);
+    const updatedEvent = await db.updateEvent(req.params.id, req.body);
     
-    if (index === -1) {
+    if (!updatedEvent) {
       return res.status(404).json({ error: 'Event not found' });
     }
     
-    events[index] = { ...events[index], ...req.body, id: req.params.id };
-    await writeJSON('data/events.json', events);
-    
-    res.json(events[index]);
+    res.json(updatedEvent);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update event' });
   }
@@ -197,10 +158,7 @@ app.put('/api/events/:id', authMiddleware, async (req, res) => {
 // Delete event (admin only)
 app.delete('/api/events/:id', authMiddleware, async (req, res) => {
   try {
-    const events = await readJSON('data/events.json');
-    const filtered = events.filter(e => e.id !== req.params.id);
-    await writeJSON('data/events.json', filtered);
-    
+    await db.deleteEvent(req.params.id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete event' });
@@ -216,8 +174,7 @@ app.post('/api/events/:id/frames', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'No frame data provided' });
     }
     
-    const events = await readJSON('data/events.json');
-    const event = events.find(e => e.id === req.params.id);
+    const event = await db.getEventById(req.params.id);
     
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
@@ -240,7 +197,7 @@ app.post('/api/events/:id/frames', authMiddleware, async (req, res) => {
     };
     
     event.frames.push(frame);
-    await writeJSON('data/events.json', events);
+    await db.updateEvent(event.id, event);
     
     res.json(frame);
   } catch (error) {
@@ -252,8 +209,7 @@ app.post('/api/events/:id/frames', authMiddleware, async (req, res) => {
 // Delete frame (admin only)
 app.delete('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, res) => {
   try {
-    const events = await readJSON('data/events.json');
-    const event = events.find(e => e.id === req.params.eventId);
+    const event = await db.getEventById(req.params.eventId);
     
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
@@ -275,7 +231,7 @@ app.delete('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, r
     
     // Remove from array
     event.frames.splice(frameIndex, 1);
-    await writeJSON('data/events.json', events);
+    await db.updateEvent(event.id, event);
     
     res.json({ success: true });
   } catch (error) {
@@ -292,8 +248,7 @@ app.post('/api/events/:id/photos', async (req, res) => {
       return res.status(400).json({ error: 'Must provide exactly 3 photos' });
     }
     
-    const events = await readJSON('data/events.json');
-    const event = events.find(e => e.id === req.params.id);
+    const event = await db.getEventById(req.params.id);
     
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
@@ -323,11 +278,11 @@ app.post('/api/events/:id/photos', async (req, res) => {
     let compositePath = null;
     
     if (frame) {
-      compositePath = await generateCompositeImage(savedPhotos, frame.path, photoSetFolder, photoSetId);
+      compositePath = await generateCompositeImage(savedPhotos, frame.path, photoSetFolder);
     }
     
     // Generate GIF
-    const gifPath = await generateGIF(savedPhotos, photoSetFolder, photoSetId);
+    const gifPath = await generateGIF(savedPhotos, photoSetFolder);
     
     // Save photo set data
     const photoSet = {
@@ -341,12 +296,10 @@ app.post('/api/events/:id/photos', async (req, res) => {
       createdAt: new Date().toISOString()
     };
     
-    const allPhotos = await readJSON('data/photos.json');
-    allPhotos.push(photoSet);
-    await writeJSON('data/photos.json', allPhotos);
+    await db.createPhoto(photoSet);
     
-    // Update event
-    await writeJSON('data/events.json', events);
+    // Update event counter
+    await db.updateEvent(event.id, { photoCounter: event.photoCounter });
     
     res.json(photoSet);
   } catch (error) {
@@ -358,8 +311,7 @@ app.post('/api/events/:id/photos', async (req, res) => {
 // Get photos for an event
 app.get('/api/events/:id/photos', async (req, res) => {
   try {
-    const allPhotos = await readJSON('data/photos.json');
-    const eventPhotos = allPhotos.filter(p => p.eventId === req.params.id);
+    const eventPhotos = await db.getPhotosByEventId(req.params.id);
     res.json(eventPhotos);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch photos' });
@@ -369,8 +321,7 @@ app.get('/api/events/:id/photos', async (req, res) => {
 // Delete photo set (admin only)
 app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
   try {
-    const allPhotos = await readJSON('data/photos.json');
-    const photoSet = allPhotos.find(p => p.id === req.params.id);
+    const photoSet = await db.getPhotoById(req.params.id);
     
     if (photoSet) {
       // Delete files from Cloudinary
@@ -387,8 +338,7 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
       }
     }
     
-    const filtered = allPhotos.filter(p => p.id !== req.params.id);
-    await writeJSON('data/photos.json', filtered);
+    await db.deletePhoto(req.params.id);
     
     res.json({ success: true });
   } catch (error) {
@@ -397,7 +347,7 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
 });
 
 // Helper function to generate composite image
-async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder, photoSetId) {
+async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder) {
   try {
     // Canvas size for 2x6 inch at 300 DPI = 600x1800 pixels
     // Each photo is 600x400 (3:2 ratio), with 300px margins top and bottom
@@ -455,7 +405,7 @@ async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder, pho
 }
 
 // Helper function to generate GIF
-async function generateGIF(photoUrls, cloudinaryFolder, photoSetId) {
+async function generateGIF(photoUrls, cloudinaryFolder) {
   try {
     const width = 600;
     const height = 600;
@@ -529,8 +479,6 @@ app.get('/gallery.html', (req, res) => {
 });
 
 // Start server
-await ensureDirectories();
-
 app.listen(PORT, () => {
   console.log(`🚀 Photo Booth Server running on http://localhost:${PORT}`);
   console.log(`📸 Admin Panel: http://localhost:${PORT}/admin`);
