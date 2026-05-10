@@ -344,7 +344,7 @@ function showFrameSelection() {
 async function generateFramePreview(frame, canvas) {
   const ctx = canvas.getContext('2d');
   
-  // Load frame image
+  // Load frame image from Cloudinary
   const frameImg = new Image();
   frameImg.crossOrigin = 'anonymous';
   frameImg.src = frame.path;

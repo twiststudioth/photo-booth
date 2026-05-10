@@ -5,15 +5,23 @@ import rateLimit from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
-import { existsSync, createWriteStream } from 'fs';
+import { existsSync } from 'fs';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
+import { v2 as cloudinary } from 'cloudinary';
 
 // Load environment variables
 dotenv.config();
 import sharp from 'sharp';
 import GIFEncoder from 'gif-encoder-2';
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME?.trim(),
+  api_key: process.env.CLOUDINARY_API_KEY?.trim(),
+  api_secret: process.env.CLOUDINARY_API_SECRET?.trim()
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,8 +36,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      mediaSrc: ["'self'", "blob:"]
+      imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+      mediaSrc: ["'self'", "blob:", "https://res.cloudinary.com"]
     }
   }
 }));
@@ -54,7 +62,7 @@ app.use('/uploads', express.static('uploads'));
 
 // Ensure directories exist
 const ensureDirectories = async () => {
-  const dirs = ['uploads', 'uploads/frames', 'uploads/photos', 'data'];
+  const dirs = ['data'];
   for (const dir of dirs) {
     if (!existsSync(dir)) {
       await fs.mkdir(dir, { recursive: true });
@@ -217,18 +225,20 @@ app.post('/api/events/:id/frames', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
     
-    // Save frame image
+    // Upload frame to Cloudinary
     const frameId = uuidv4();
-    const base64Data = frameData.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    const framePath = `uploads/frames/${frameId}.png`;
+    const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
     
-    await fs.writeFile(framePath, buffer);
+    const uploadResult = await cloudinary.uploader.upload(frameData, {
+      folder: `${cloudinaryFolder}/frames`,
+      public_id: frameId,
+      resource_type: 'image'
+    });
     
     const frame = {
       id: frameId,
       name: frameName || `Frame ${event.frames.length + 1}`,
-      path: `/${framePath}`
+      path: uploadResult.secure_url
     };
     
     event.frames.push(frame);
@@ -257,13 +267,12 @@ app.delete('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, r
       return res.status(404).json({ error: 'Frame not found' });
     }
     
-    // Delete frame file
-    const frame = event.frames[frameIndex];
-    const framePath = '.' + frame.path;
+    // Delete frame from Cloudinary
+    const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
     try {
-      await fs.unlink(framePath);
+      await cloudinary.uploader.destroy(`${cloudinaryFolder}/frames/${req.params.frameId}`);
     } catch (error) {
-      console.error('Failed to delete frame file:', error);
+      console.error('Failed to delete frame from Cloudinary:', error);
     }
     
     // Remove from array
@@ -297,18 +306,18 @@ app.post('/api/events/:id/photos', async (req, res) => {
     const photoSetId = uuidv4();
     const fileName = `${event.filePrefix}_${String(event.photoCounter).padStart(4, '0')}`;
     
-    // Create folder for this photo set
-    const setFolder = `uploads/photos/${photoSetId}`;
-    await fs.mkdir(setFolder, { recursive: true });
+    const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
+    const photoSetFolder = `${cloudinaryFolder}/photos/${photoSetId}`;
     
-    // Save individual photos
+    // Upload individual photos to Cloudinary
     const savedPhotos = [];
     for (let i = 0; i < photos.length; i++) {
-      const base64Data = photos[i].replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      const photoPath = `${setFolder}/photo_${i + 1}.jpg`;
-      await fs.writeFile(photoPath, buffer);
-      savedPhotos.push(`/${photoPath}`);
+      const uploadResult = await cloudinary.uploader.upload(photos[i], {
+        folder: photoSetFolder,
+        public_id: `photo_${i + 1}`,
+        resource_type: 'image'
+      });
+      savedPhotos.push(uploadResult.secure_url);
     }
     
     // Generate composite image with frame
@@ -316,11 +325,11 @@ app.post('/api/events/:id/photos', async (req, res) => {
     let compositePath = null;
     
     if (frame) {
-      compositePath = await generateCompositeImage(savedPhotos, frame.path, setFolder);
+      compositePath = await generateCompositeImage(savedPhotos, frame.path, photoSetFolder, photoSetId);
     }
     
     // Generate GIF
-    const gifPath = await generateGIF(savedPhotos, setFolder);
+    const gifPath = await generateGIF(savedPhotos, photoSetFolder, photoSetId);
     
     // Save photo set data
     const photoSet = {
@@ -366,9 +375,18 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
     const photoSet = allPhotos.find(p => p.id === req.params.id);
     
     if (photoSet) {
-      // Delete files
-      const setFolder = `uploads/photos/${photoSet.id}`;
-      await fs.rm(setFolder, { recursive: true, force: true });
+      // Delete files from Cloudinary
+      const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
+      const photoSetFolder = `${cloudinaryFolder}/photos/${photoSet.id}`;
+      
+      try {
+        // Delete all resources in the folder
+        await cloudinary.api.delete_resources_by_prefix(photoSetFolder);
+        // Delete the folder
+        await cloudinary.api.delete_folder(photoSetFolder);
+      } catch (error) {
+        console.error('Failed to delete from Cloudinary:', error);
+      }
     }
     
     const filtered = allPhotos.filter(p => p.id !== req.params.id);
@@ -381,7 +399,7 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
 });
 
 // Helper function to generate composite image
-async function generateCompositeImage(photoPaths, framePath, outputFolder) {
+async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder, photoSetId) {
   try {
     // Canvas size for 2x6 inch at 300 DPI = 600x1800 pixels
     // Each photo is 600x400 (3:2 ratio), with 300px margins top and bottom
@@ -390,10 +408,14 @@ async function generateCompositeImage(photoPaths, framePath, outputFolder) {
     const photoHeight = 400; // 3:2 ratio
     const topMargin = 300;
     
-    // Load and place photos (already cropped to 3:2 ratio)
+    // Download photos from Cloudinary and prepare buffers
     const photoBuffers = [];
-    for (let i = 0; i < photoPaths.length; i++) {
-      const photoBuffer = await sharp('.' + photoPaths[i])
+    for (let i = 0; i < photoUrls.length; i++) {
+      const response = await fetch(photoUrls[i]);
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      const photoBuffer = await sharp(buffer)
         .resize(width, photoHeight, { 
           fit: 'cover',
           position: 'center'
@@ -407,16 +429,27 @@ async function generateCompositeImage(photoPaths, framePath, outputFolder) {
       });
     }
     
-    // Load frame and composite
-    const compositePath = `${outputFolder}/composite.jpg`;
+    // Download frame from Cloudinary
+    const frameResponse = await fetch(frameUrl);
+    const frameArrayBuffer = await frameResponse.arrayBuffer();
+    const frameBuffer = Buffer.from(frameArrayBuffer);
     
-    await sharp('.' + framePath)
+    // Create composite
+    const compositeBuffer = await sharp(frameBuffer)
       .resize(width, height)
       .composite(photoBuffers)
       .jpeg({ quality: 95 })
-      .toFile(compositePath);
+      .toBuffer();
     
-    return `/${compositePath}`;
+    // Upload composite to Cloudinary
+    const base64Composite = `data:image/jpeg;base64,${compositeBuffer.toString('base64')}`;
+    const uploadResult = await cloudinary.uploader.upload(base64Composite, {
+      folder: cloudinaryFolder,
+      public_id: 'composite',
+      resource_type: 'image'
+    });
+    
+    return uploadResult.secure_url;
   } catch (error) {
     console.error('Composite generation error:', error);
     return null;
@@ -424,19 +457,23 @@ async function generateCompositeImage(photoPaths, framePath, outputFolder) {
 }
 
 // Helper function to generate GIF
-async function generateGIF(photoPaths, outputFolder) {
+async function generateGIF(photoUrls, cloudinaryFolder, photoSetId) {
   try {
     const width = 600;
     const height = 600;
     
-    const gifPath = `${outputFolder}/animation.gif`;
     const encoder = new GIFEncoder(width, height);
     
     // Prepare frames
     const frames = [];
-    for (const photoPath of photoPaths) {
+    for (const photoUrl of photoUrls) {
+      // Download photo from Cloudinary
+      const response = await fetch(photoUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
       // Resize and convert to raw pixel data
-      const { data, info } = await sharp('.' + photoPath)
+      const { data } = await sharp(buffer)
         .resize(width, height, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
         .ensureAlpha()
         .raw()
@@ -458,11 +495,18 @@ async function generateGIF(photoPaths, outputFolder) {
     
     encoder.finish();
     
-    // Write to file
-    const buffer = encoder.out.getData();
-    await fs.writeFile(gifPath, buffer);
+    // Get GIF buffer
+    const gifBuffer = encoder.out.getData();
     
-    return `/${gifPath}`;
+    // Upload GIF to Cloudinary
+    const base64Gif = `data:image/gif;base64,${gifBuffer.toString('base64')}`;
+    const uploadResult = await cloudinary.uploader.upload(base64Gif, {
+      folder: cloudinaryFolder,
+      public_id: 'animation',
+      resource_type: 'image'
+    });
+    
+    return uploadResult.secure_url;
   } catch (error) {
     console.error('GIF generation error:', error);
     return null;

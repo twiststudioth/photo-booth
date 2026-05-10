@@ -35,6 +35,7 @@
 ### ความต้องการของระบบ
 - Node.js 18 หรือสูงกว่า
 - npm หรือ yarn
+- บัญชี Cloudinary (สำหรับเก็บรูปภาพ)
 
 ### ขั้นตอนการติดตั้ง
 
@@ -48,12 +49,23 @@ cd photobooth-app
 npm install
 ```
 
-3. **รันโปรแกรม**
+3. **ตั้งค่า Cloudinary**
+   - สมัครบัญชีฟรีที่ [Cloudinary](https://cloudinary.com)
+   - คัดลอกไฟล์ `.env.example` เป็น `.env`
+   - แก้ไขไฟล์ `.env` และใส่ข้อมูล Cloudinary ของคุณ:
+   ```env
+   CLOUDINARY_CLOUD_NAME=your_cloud_name
+   CLOUDINARY_API_KEY=your_api_key
+   CLOUDINARY_API_SECRET=your_api_secret
+   CLOUDINARY_FOLDER=photobooth
+   ```
+
+4. **รันโปรแกรม**
 ```bash
 npm start
 ```
 
-4. **เปิดเบราว์เซอร์**
+5. **เปิดเบราว์เซอร์**
 - หน้าแรก: http://localhost:3000
 - Admin Panel: http://localhost:3000/admin
 - แกลเลอรี่: http://localhost:3000/gallery.html
@@ -167,11 +179,11 @@ npm start
 - **Async Operations** - ใช้ async/await ทุกที่
 
 ### แนะนำเพิ่มเติม:
-1. **CDN** - ใช้ CDN สำหรับ static files
-2. **Image CDN** - ใช้บริการ image optimization (เช่น Cloudinary)
-3. **Database** - ย้ายจาก JSON files ไปใช้ database (MongoDB, PostgreSQL)
-4. **Queue System** - ใช้ queue สำหรับ image processing (Bull, BullMQ)
-5. **Load Balancer** - ใช้ load balancer สำหรับ traffic สูง
+1. **Database** - ย้ายจาก JSON files ไปใช้ database (MongoDB, PostgreSQL)
+2. **Queue System** - ใช้ queue สำหรับ image processing (Bull, BullMQ)
+3. **Load Balancer** - ใช้ load balancer สำหรับ traffic สูง
+
+**หมายเหตุ**: ระบบใช้ Cloudinary สำหรับเก็บรูปภาพแล้ว ซึ่งช่วยเพิ่มประสิทธิภาพและลดภาระของ server
 
 ## 🎨 การปรับแต่ง
 
@@ -205,6 +217,8 @@ const bottomMargin = 300;
 photobooth-app/
 ├── server.js              # Express server
 ├── package.json           # Dependencies
+├── .env                   # Environment variables (Cloudinary config)
+├── .env.example          # ตัวอย่างการตั้งค่า
 ├── README.md             # คู่มือนี้
 ├── ADMIN_GUIDE.md        # คู่มือ admin โดยละเอียด
 ├── public/               # Frontend files
@@ -216,19 +230,12 @@ photobooth-app/
 │   ├── admin.js          # Admin logic
 │   ├── capture.js        # Capture logic
 │   └── gallery.js        # Gallery logic
-├── data/                 # JSON database
-│   ├── events.json       # Events data
-│   └── photos.json       # Photos data
-└── uploads/              # Uploaded files
-    ├── frames/           # Frame images
-    └── photos/           # Photo sets
-        └── [set-id]/     # Each photo set
-            ├── photo_1.jpg
-            ├── photo_2.jpg
-            ├── photo_3.jpg
-            ├── composite.jpg
-            └── animation.gif
+└── data/                 # JSON database
+    ├── events.json       # Events data
+    └── photos.json       # Photos data (URLs to Cloudinary)
 ```
+
+**หมายเหตุ**: รูปภาพทั้งหมดถูกเก็บบน Cloudinary แทนที่จะเก็บใน local server
 
 ## 🐛 การแก้ปัญหา
 
