@@ -8,11 +8,9 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
-import dotenv from 'dotenv';
 import { v2 as cloudinary } from 'cloudinary';
 
 // Load environment variables
-dotenv.config();
 import sharp from 'sharp';
 import GIFEncoder from 'gif-encoder-2';
 
