@@ -12,6 +12,14 @@
       "dest": "server.js"
     },
     {
+      "src": "/fonts/(.*)",
+      "dest": "public/fonts/$1"
+    },
+    {
+      "src": "/(.*\\.(css|js|png|jpg|jpeg|gif|svg|ico|ttf|woff|woff2))",
+      "dest": "public/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "server.js"
     }
