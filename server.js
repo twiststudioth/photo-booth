@@ -263,13 +263,15 @@ app.post('/api/events/:id/photos', async (req, res) => {
     const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
     const photoSetFolder = `${cloudinaryFolder}/photos/${photoSetId}`;
     
-    // Upload individual photos to Cloudinary
+    // Upload individual photos to Cloudinary with optimization
     const savedPhotos = [];
     for (let i = 0; i < photos.length; i++) {
       const uploadResult = await cloudinary.uploader.upload(photos[i], {
         folder: photoSetFolder,
         public_id: `photo_${i + 1}`,
-        resource_type: 'image'
+        resource_type: 'image',
+        quality: 'auto:good',
+        fetch_format: 'auto'
       });
       savedPhotos.push(uploadResult.secure_url);
     }
@@ -383,19 +385,21 @@ async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder) {
     const frameArrayBuffer = await frameResponse.arrayBuffer();
     const frameBuffer = Buffer.from(frameArrayBuffer);
     
-    // Create composite
+    // Create composite with optimized quality
     const compositeBuffer = await sharp(frameBuffer)
       .resize(width, height)
       .composite(photoBuffers)
-      .jpeg({ quality: 95 })
+      .jpeg({ quality: 85, progressive: true }) // ลดจาก 95 เป็น 85
       .toBuffer();
     
-    // Upload composite to Cloudinary
+    // Upload composite to Cloudinary with optimization
     const base64Composite = `data:image/jpeg;base64,${compositeBuffer.toString('base64')}`;
     const uploadResult = await cloudinary.uploader.upload(base64Composite, {
       folder: cloudinaryFolder,
       public_id: 'composite',
-      resource_type: 'image'
+      resource_type: 'image',
+      quality: 'auto:good',
+      fetch_format: 'auto'
     });
     
     return uploadResult.secure_url;

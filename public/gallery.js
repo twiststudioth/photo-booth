@@ -15,6 +15,7 @@ const photoViewerModal = document.getElementById('photoViewerModal');
 const currentPhoto = document.getElementById('currentPhoto');
 const photoIndex = document.getElementById('photoIndex');
 const deleteSetBtn = document.getElementById('deleteSetBtn');
+const photoLoading = document.getElementById('photoLoading');
 
 // Check if admin
 const authToken = localStorage.getItem('authToken');
@@ -116,8 +117,11 @@ function displayPhotos() {
       minute: '2-digit'
     });
     
+    // Optimize Cloudinary image URL for thumbnail
+    const thumbnailUrl = optimizeCloudinaryUrl(photoSet.composite || photoSet.photos[0], 'thumbnail');
+    
     card.innerHTML = `
-      <img src="${photoSet.composite || photoSet.photos[0]}" alt="${photoSet.fileName}" class="photo-set-thumbnail">
+      <img src="${thumbnailUrl}" alt="${photoSet.fileName}" class="photo-set-thumbnail" loading="lazy" width="180" height="210">
       <div class="photo-set-info">
         <h3 title="${photoSet.fileName}">${photoSet.fileName}</h3>
         <p title="${photoSet.eventName}">${photoSet.eventName}</p>
@@ -129,12 +133,34 @@ function displayPhotos() {
   });
 }
 
+// Optimize Cloudinary URL with transformations
+function optimizeCloudinaryUrl(url, type = 'thumbnail') {
+  if (!url || !url.includes('cloudinary.com')) {
+    return url;
+  }
+  
+  // Define transformations based on type
+  const transformations = {
+    thumbnail: 'w_200,h_240,c_fill,f_auto,q_auto:eco',
+    preview: 'w_800,f_auto,q_auto:good',
+    full: 'w_1200,f_auto,q_auto:good'
+  };
+  
+  const transform = transformations[type] || transformations.thumbnail;
+  
+  // Insert transformation into URL
+  return url.replace('/upload/', `/upload/${transform}/`);
+}
+
 // Open photo viewer
 function openPhotoViewer(photoSet) {
   currentPhotoSet = photoSet;
   currentPhotoIndex = 0;
   
+  // Show modal first
   photoViewerModal.classList.add('active');
+  
+  // Then load photo
   updatePhotoDisplay();
 }
 
@@ -157,14 +183,50 @@ function updatePhotoDisplay() {
     photos.push({ src: currentPhotoSet.gif, label: 'GIF Animation' });
   }
   
-  // Display current photo
+  // Show loading indicator
+  showPhotoLoading();
+  
+  // Display current photo with optimization
   const currentPhotoData = photos[currentPhotoIndex];
-  currentPhoto.src = currentPhotoData.src;
+  const optimizedUrl = optimizeCloudinaryUrl(currentPhotoData.src, 'preview');
+  
+  // Preload image
+  const img = new Image();
+  img.onload = () => {
+    currentPhoto.src = optimizedUrl;
+    currentPhoto.style.display = 'block';
+    hidePhotoLoading();
+  };
+  img.onerror = () => {
+    // If optimized fails, try original
+    currentPhoto.src = currentPhotoData.src;
+    currentPhoto.style.display = 'block';
+    hidePhotoLoading();
+  };
+  img.src = optimizedUrl;
+  
   photoIndex.textContent = `${currentPhotoIndex + 1} / ${photos.length} - ${currentPhotoData.label}`;
   
   // Update navigation buttons
   document.querySelector('.prev-btn').disabled = currentPhotoIndex === 0;
   document.querySelector('.next-btn').disabled = currentPhotoIndex === photos.length - 1;
+}
+
+// Show photo loading indicator
+function showPhotoLoading() {
+  if (photoLoading) {
+    photoLoading.classList.remove('hidden');
+  }
+  if (currentPhoto) {
+    currentPhoto.style.display = 'none';
+  }
+}
+
+// Hide photo loading indicator
+function hidePhotoLoading() {
+  if (photoLoading) {
+    photoLoading.classList.add('hidden');
+  }
 }
 
 // Navigation
@@ -196,7 +258,9 @@ function getPhotoArray() {
 document.getElementById('downloadCurrentBtn').addEventListener('click', async () => {
   const photos = getPhotoArray();
   const photoUrl = photos[currentPhotoIndex];
-  await downloadPhoto(photoUrl, `${currentPhotoSet.fileName}_${currentPhotoIndex + 1}`);
+  // Use full quality for download
+  const fullQualityUrl = optimizeCloudinaryUrl(photoUrl, 'full');
+  await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_${currentPhotoIndex + 1}`);
 });
 
 // Detect if device is iOS
@@ -293,6 +357,12 @@ deleteSetBtn.addEventListener('click', async () => {
 document.querySelectorAll('.close-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     photoViewerModal.classList.remove('active');
+    // Reset photo display
+    if (currentPhoto) {
+      currentPhoto.style.display = 'none';
+      currentPhoto.src = '';
+    }
+    hidePhotoLoading();
   });
 });
 
@@ -301,11 +371,23 @@ document.addEventListener('keydown', (e) => {
   if (!photoViewerModal.classList.contains('active')) return;
   
   if (e.key === 'ArrowLeft') {
-    document.querySelector('.prev-btn').click();
+    const prevBtn = document.querySelector('.prev-btn');
+    if (!prevBtn.disabled) {
+      prevBtn.click();
+    }
   } else if (e.key === 'ArrowRight') {
-    document.querySelector('.next-btn').click();
+    const nextBtn = document.querySelector('.next-btn');
+    if (!nextBtn.disabled) {
+      nextBtn.click();
+    }
   } else if (e.key === 'Escape') {
     photoViewerModal.classList.remove('active');
+    // Reset photo display
+    if (currentPhoto) {
+      currentPhoto.style.display = 'none';
+      currentPhoto.src = '';
+    }
+    hidePhotoLoading();
   }
 });
 

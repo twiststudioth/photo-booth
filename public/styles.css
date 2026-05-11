@@ -877,6 +877,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 400px;
 }
 
 .photo-display img {
@@ -884,6 +885,43 @@ body {
   max-height: 70vh;
   border-radius: 8px;
   box-shadow: var(--shadow-lg);
+  transition: opacity 0.3s ease;
+}
+
+.photo-display img.loading {
+  opacity: 0;
+}
+
+/* Photo Loading Indicator */
+.photo-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 10;
+}
+
+.photo-loading.hidden {
+  display: none;
+}
+
+.photo-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--border);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.photo-loading p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0;
 }
 
     .nav-btn {
