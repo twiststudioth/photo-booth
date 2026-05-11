@@ -433,32 +433,117 @@ document.getElementById('savePhotosBtn').addEventListener('click', async () => {
   
   try {
     saveBtn.disabled = true;
-    saveBtn.innerHTML = 'กำลังบันทึก...';
+    saveBtn.innerHTML = 'กำลังเตรียมพิมพ์...';
     
+    // Generate composite locally first for immediate printing
+    const frame = eventData.frames.find(f => f.id === selectedFrameId);
+    if (frame) {
+      const localComposite = await generateLocalComposite(capturedPhotos, frame.path);
+      
+      // Print immediately
+      printPhoto(localComposite);
+      
+      // Show success and start background upload
+      showSuccess();
+      saveBtn.innerHTML = 'กำลังบันทึก...';
+      
+      // Upload in background (don't await)
+      uploadPhotosInBackground(capturedPhotos, selectedFrameId);
+    } else {
+      throw new Error('Frame not found');
+    }
+  } catch (error) {
+    console.error('Save error:', error);
+    alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = originalText;
+  }
+});
+
+// Generate composite locally for immediate printing
+async function generateLocalComposite(photos, frameUrl) {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Print canvas size: 4x6 inch at 300 DPI = 1200x1800
+    // Two composites side by side: each 600x1800
+    canvas.width = 1200;
+    canvas.height = 1800;
+    
+    const photoHeight = 400; // 3:2 ratio
+    const topMargin = 300;
+    
+    // Load frame
+    const frameImg = new Image();
+    frameImg.crossOrigin = 'anonymous';
+    frameImg.onload = async () => {
+      // Draw first composite (left side)
+      ctx.drawImage(frameImg, 0, 0, 600, 1800);
+      
+      // Draw photos on left side
+      for (let i = 0; i < photos.length; i++) {
+        const img = new Image();
+        img.src = photos[i];
+        
+        await new Promise((resolveImg) => {
+          img.onload = () => {
+            const y = topMargin + (i * photoHeight);
+            ctx.drawImage(img, 0, y, 600, photoHeight);
+            resolveImg();
+          };
+        });
+      }
+      
+      // Draw second composite (right side) - duplicate
+      ctx.drawImage(frameImg, 600, 0, 600, 1800);
+      
+      // Draw photos on right side
+      for (let i = 0; i < photos.length; i++) {
+        const img = new Image();
+        img.src = photos[i];
+        
+        await new Promise((resolveImg) => {
+          img.onload = () => {
+            const y = topMargin + (i * photoHeight);
+            ctx.drawImage(img, 600, y, 600, photoHeight);
+            resolveImg();
+          };
+        });
+      }
+      
+      // Return as data URL
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    
+    frameImg.onerror = reject;
+    frameImg.src = frameUrl;
+  });
+}
+
+// Upload photos in background
+async function uploadPhotosInBackground(photos, frameId) {
+  try {
     const response = await fetch(`/api/events/${eventId}/photos`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        photos: capturedPhotos,
-        frameId: selectedFrameId
+        photos: photos,
+        frameId: frameId
       })
     });
     
     if (response.ok) {
-      const result = await response.json();
-      showSuccess();
+      console.log('Photos uploaded successfully in background');
     } else {
-      throw new Error('Save failed');
+      console.error('Background upload failed');
     }
   } catch (error) {
-    console.error('Save error:', error);
-    alert('บันทึกรูปไม่สำเร็จ กรุณาลองใหม่');
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = originalText;
+    console.error('Background upload error:', error);
   }
-});
+}
 
 // Show success
 function showSuccess() {
@@ -504,3 +589,75 @@ document.getElementById('takeMoreBtn').addEventListener('click', () => {
 // Initialize on load
 init();
 updateThumbnails();
+
+// Print photo function
+function printPhoto(compositeDataUrl) {
+  // Create a hidden iframe for printing
+  const printFrame = document.createElement('iframe');
+  printFrame.style.position = 'fixed';
+  printFrame.style.right = '0';
+  printFrame.style.bottom = '0';
+  printFrame.style.width = '0';
+  printFrame.style.height = '0';
+  printFrame.style.border = 'none';
+  document.body.appendChild(printFrame);
+  
+  // Write print content to iframe
+  const printDocument = printFrame.contentWindow.document;
+  printDocument.open();
+  printDocument.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Print Photo</title>
+      <style>
+        @page {
+          size: 4in 6in;
+          margin: 0;
+        }
+        
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        
+        body {
+          width: 4in;
+          height: 6in;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+        }
+        
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          display: block;
+        }
+      </style>
+    </head>
+    <body>
+      <img src="${compositeDataUrl}" alt="Photo" id="printImg">
+    </body>
+    </html>
+  `);
+  printDocument.close();
+  
+  // Wait for image to load, then print
+  const img = printFrame.contentWindow.document.getElementById('printImg');
+  img.addEventListener('load', () => {
+    setTimeout(() => {
+      printFrame.contentWindow.print();
+    }, 100);
+  });
+  
+  // Remove iframe after printing
+  printFrame.contentWindow.addEventListener('afterprint', () => {
+    setTimeout(() => {
+      document.body.removeChild(printFrame);
+    }, 100);
+  });
+}
