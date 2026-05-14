@@ -1,10 +1,18 @@
 // Capture Page JavaScript
 
-// Check authentication first
-const authToken = localStorage.getItem('authToken');
+// Get auth token from URL parameter or localStorage
+const urlParams = new URLSearchParams(window.location.search);
+const authToken = urlParams.get('token') || localStorage.getItem('authToken');
+
+// Check authentication
 if (!authToken) {
   alert('กรุณาเข้าสู่ระบบก่อนใช้งาน');
   window.location.href = '/admin.html';
+}
+
+// Store token in localStorage for future use
+if (authToken && !localStorage.getItem('authToken')) {
+  localStorage.setItem('authToken', authToken);
 }
 
 let eventId = null;

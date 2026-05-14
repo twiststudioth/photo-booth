@@ -267,7 +267,7 @@ app.delete('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, r
   }
 });
 
-// Save photo set
+// Save photo set (admin only)
 app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
   try {
     const { photos, frameId } = req.body;

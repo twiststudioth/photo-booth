@@ -353,7 +353,7 @@ async function deletePhotoSet(photoId) {
 
 // Open capture page
 function openCapture(eventId) {
-  window.open(`/capture.html?event=${eventId}`, '_blank');
+  window.open(`/capture.html?event=${eventId}&token=${authToken}`, '_blank');
 }
 
 // Open gallery page
