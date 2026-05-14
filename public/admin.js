@@ -1,7 +1,16 @@
 // Admin Panel JavaScript
 
-let authToken = localStorage.getItem('authToken');
+let authToken = localStorage.getItem('authToken') || '';
 let currentEvent = null;
+
+// SHA256 hash function
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
 
 // DOM Elements
 const loginScreen = document.getElementById('loginScreen');
@@ -32,11 +41,14 @@ loginForm.addEventListener('submit', async (e) => {
   const username = document.getElementById('username').value;
   const password = document.getElementById('password').value;
   
+  // Hash password with SHA256 before sending
+  const hashedPassword = await sha256(password);
+  
   try {
     const response = await fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password: hashedPassword })
     });
     
     const data = await response.json();

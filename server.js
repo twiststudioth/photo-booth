@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import { v2 as cloudinary } from 'cloudinary';
 import sharp from 'sharp';
 import GIFEncoder from 'gif-encoder-2';
+import jwt from 'jsonwebtoken';
 import * as db from './lib/db.js';
 
 // Load environment variables
@@ -24,6 +25,7 @@ cloudinary.config({
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,13 +61,26 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Static files
 app.use(express.static('public'));
 
-// Simple auth middleware
+// JWT secret key (should be in .env file)
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
+
+// JWT auth middleware
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || authHeader !== 'Bearer admin-token') {
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  next();
+  
+  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; // Attach user info to request
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
 };
 
 // API Routes
@@ -74,14 +89,26 @@ const authMiddleware = (req, res, next) => {
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
   
-  // Simple authentication (in production, use proper password hashing)
+  // Get credentials from environment variables
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
   
   if (username === adminUsername && password === adminPassword) {
+    // Create JWT token with username and password encoded
+    const token = jwt.sign(
+      { 
+        username: adminUsername,
+        password: adminPassword,
+        role: 'admin',
+        iat: Math.floor(Date.now() / 1000)
+      },
+      JWT_SECRET,
+      { expiresIn: '24h' } // Token expires in 24 hours
+    );
+    
     res.json({ 
       success: true, 
-      token: 'admin-token',
+      token: token,
       message: 'Login successful' 
     });
   } else {
@@ -241,7 +268,7 @@ app.delete('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, r
 });
 
 // Save photo set
-app.post('/api/events/:id/photos', async (req, res) => {
+app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
   try {
     const { photos, frameId } = req.body;
     

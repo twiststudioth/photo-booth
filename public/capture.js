@@ -2,7 +2,7 @@
 
 // Check authentication first
 const authToken = localStorage.getItem('authToken');
-if (!authToken || authToken !== 'admin-token') {
+if (!authToken) {
   alert('กรุณาเข้าสู่ระบบก่อนใช้งาน');
   window.location.href = '/admin.html';
 }
@@ -13,7 +13,6 @@ let stream = null;
 let capturedPhotos = [];
 let currentPhotoIndex = 0;
 let selectedFrameId = null;
-
 // DOM Elements
 const loadingScreen = document.getElementById('loadingScreen');
 const captureScreen = document.getElementById('captureScreen');
@@ -523,11 +522,19 @@ async function generateLocalComposite(photos, frameUrl) {
 
 // Upload photos in background
 async function uploadPhotosInBackground(photos, frameId) {
+  const statusText = document.getElementById('statusText');
+  const statusIcon = document.getElementById('statusIcon');
+  const statusDescription = document.getElementById('statusDescription');
+  const statusNote = document.getElementById('statusNote');
+  
   try {
+    statusText.textContent = 'กำลังอัพโหลด...';
+    
     const response = await fetch(`/api/events/${eventId}/photos`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
       },
       body: JSON.stringify({
         photos: photos,
@@ -537,11 +544,32 @@ async function uploadPhotosInBackground(photos, frameId) {
     
     if (response.ok) {
       console.log('Photos uploaded successfully in background');
+      // แสดงสถานะสำเร็จ
+      statusIcon.textContent = '✓';
+      statusIcon.style.background = 'var(--success)';
+      statusText.textContent = 'บันทึกสำเร็จ!';
+      statusText.style.color = 'var(--text-primary)';
+      statusDescription.style.display = 'block';
+      statusNote.style.display = 'block';
     } else {
       console.error('Background upload failed');
+      // แสดงสถานะล้มเหลว
+      statusIcon.textContent = '✕';
+      statusIcon.style.background = '#ef4444';
+      statusText.textContent = 'อัพโหลดไม่สำเร็จ';
+      statusText.style.color = '#ef4444';
+      statusDescription.style.display = 'none';
+      statusNote.style.display = 'none';
     }
   } catch (error) {
     console.error('Background upload error:', error);
+    // แสดงสถานะล้มเหลว
+    statusIcon.textContent = '✕';
+    statusIcon.style.background = '#ef4444';
+    statusText.textContent = 'อัพโหลดไม่สำเร็จ';
+    statusText.style.color = '#ef4444';
+    statusDescription.style.display = 'none';
+    statusNote.style.display = 'none';
   }
 }
 

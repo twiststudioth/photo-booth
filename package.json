@@ -24,6 +24,7 @@
     "express-rate-limit": "^7.4.1",
     "gif-encoder-2": "^1.0.5",
     "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
     "qrcode": "^1.5.4",
     "sharp": "^0.33.5",
     "uuid": "^11.0.3"
