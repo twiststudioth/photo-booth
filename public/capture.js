@@ -179,9 +179,9 @@ captureBtn.addEventListener('click', async () => {
   
   const context = canvas.getContext('2d');
   
-  // Set canvas to 3:2 aspect ratio (600x400 for each photo)
-  const targetWidth = 600;
-  const targetHeight = 400;
+  // Set canvas to 3:2 aspect ratio (1200x800 for each photo)
+  const targetWidth = 1200;
+  const targetHeight = 800;
   canvas.width = targetWidth;
   canvas.height = targetHeight;
   
@@ -473,20 +473,20 @@ async function generateLocalComposite(photos, frameUrl) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Print canvas size: 4x6 inch at 300 DPI = 1200x1800
-    // Two composites side by side: each 600x1800
-    canvas.width = 1200;
-    canvas.height = 1800;
+    // Print canvas size: 4x6 inch at 300 DPI = 2400x3600
+    // Two composites side by side: each 1200x3600
+    canvas.width = 2400;
+    canvas.height = 3600;
     
-    const photoHeight = 400; // 3:2 ratio
-    const topMargin = 300;
+    const photoHeight = 800; // 3:2 ratio
+    const topMargin = 600;
     
     // Load frame
     const frameImg = new Image();
     frameImg.crossOrigin = 'anonymous';
     frameImg.onload = async () => {
       // Draw first composite (left side)
-      ctx.drawImage(frameImg, 0, 0, 600, 1800);
+      ctx.drawImage(frameImg, 0, 0, 1200, 3600);
       
       // Draw photos on left side
       for (let i = 0; i < photos.length; i++) {
@@ -496,14 +496,14 @@ async function generateLocalComposite(photos, frameUrl) {
         await new Promise((resolveImg) => {
           img.onload = () => {
             const y = topMargin + (i * photoHeight);
-            ctx.drawImage(img, 0, y, 600, photoHeight);
+            ctx.drawImage(img, 0, y, 1200, photoHeight);
             resolveImg();
           };
         });
       }
       
       // Draw second composite (right side) - duplicate
-      ctx.drawImage(frameImg, 600, 0, 600, 1800);
+      ctx.drawImage(frameImg, 1200, 0, 1200, 3600);
       
       // Draw photos on right side
       for (let i = 0; i < photos.length; i++) {
@@ -513,7 +513,7 @@ async function generateLocalComposite(photos, frameUrl) {
         await new Promise((resolveImg) => {
           img.onload = () => {
             const y = topMargin + (i * photoHeight);
-            ctx.drawImage(img, 600, y, 600, photoHeight);
+            ctx.drawImage(img, 1200, y, 1200, photoHeight);
             resolveImg();
           };
         });

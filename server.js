@@ -379,12 +379,12 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
 // Helper function to generate composite image
 async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder) {
   try {
-    // Canvas size for 2x6 inch at 300 DPI = 600x1800 pixels
-    // Each photo is 600x400 (3:2 ratio), with 300px margins top and bottom
-    const width = 600;
-    const height = 1800;
-    const photoHeight = 400; // 3:2 ratio
-    const topMargin = 300;
+    // Canvas size for 2x6 inch at 300 DPI = 1200x3600 pixels
+    // Each photo is 1200x800 (3:2 ratio), with 600px margins top and bottom
+    const width = 1200;
+    const height = 3600;
+    const photoHeight = 800; // 3:2 ratio
+    const topMargin = 600;
     
     // Download photos from Cloudinary and prepare buffers
     const photoBuffers = [];
