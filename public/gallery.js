@@ -143,7 +143,7 @@ function optimizeCloudinaryUrl(url, type = 'thumbnail') {
   const transformations = {
     thumbnail: 'w_200,h_240,c_fill,f_auto,q_auto:eco',
     preview: 'w_800,f_auto,q_auto:good',
-    full: 'w_1200,f_auto,q_auto:good'
+    full: 'f_auto,q_auto:best' // ดาวน์โหลดขนาดเต็ม 2400x1600 ไม่ resize
   };
   
   const transform = transformations[type] || transformations.thumbnail;
