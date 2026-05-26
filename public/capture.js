@@ -90,6 +90,7 @@ async function initCamera() {
     
     // Get last selected camera from localStorage
     const lastSelectedCamera = localStorage.getItem('selectedCamera');
+    const lastFacingMode = localStorage.getItem('facingMode') || 'user';
     let selectedDevice = null;
     
     if (lastSelectedCamera && videoDevices.find(d => d.deviceId === lastSelectedCamera)) {
@@ -97,13 +98,22 @@ async function initCamera() {
       selectedDevice = lastSelectedCamera;
       cameraSelect.value = lastSelectedCamera;
     } else if (videoDevices.length > 0) {
-      // Use first camera
+      // Use first camera or try to use facing mode
       selectedDevice = videoDevices[0].deviceId;
     }
     
-    // Start camera
+    // Start camera with facing mode preference for mobile
     if (selectedDevice) {
-      await startCamera(selectedDevice);
+      await startCamera(selectedDevice, lastFacingMode);
+    } else {
+      // If no device ID, try with facing mode only (mobile)
+      await startCamera(null, lastFacingMode);
+    }
+    
+    // Show/hide flip camera button based on device count
+    const flipBtn = document.getElementById('flipCameraBtn');
+    if (flipBtn) {
+      flipBtn.style.display = videoDevices.length > 1 ? 'block' : 'none';
     }
   } catch (error) {
     console.error('Camera initialization error:', error);
@@ -112,7 +122,7 @@ async function initCamera() {
 }
 
 // Start camera
-async function startCamera(deviceId) {
+async function startCamera(deviceId, facingMode = 'user') {
   try {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
@@ -121,14 +131,21 @@ async function startCamera(deviceId) {
     // Target aspect ratio for 3:2 (600x400 per photo)
     const targetAspectRatio = 3 / 2; // 1.5
     
+    // Build constraints with mobile support
     const constraints = {
       video: {
-        deviceId: deviceId ? { exact: deviceId } : undefined,
         width: { ideal: 1920 },
         height: { ideal: 1280 },
         aspectRatio: { ideal: targetAspectRatio }
       }
     };
+    
+    // Prioritize deviceId if provided, otherwise use facingMode for mobile
+    if (deviceId) {
+      constraints.video.deviceId = { exact: deviceId };
+    } else {
+      constraints.video.facingMode = { ideal: facingMode };
+    }
     
     stream = await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject = stream;
@@ -136,6 +153,9 @@ async function startCamera(deviceId) {
     // Apply CSS to maintain aspect ratio
     video.style.aspectRatio = '3/2';
     video.style.objectFit = 'cover';
+    
+    // Store current facing mode
+    localStorage.setItem('facingMode', facingMode);
   } catch (error) {
     console.error('Camera start error:', error);
     alert('ไม่สามารถเปิดกล้องได้');
@@ -145,10 +165,26 @@ async function startCamera(deviceId) {
 // Camera select change
 cameraSelect.addEventListener('change', (e) => {
   const deviceId = e.target.value;
-  startCamera(deviceId);
+  startCamera(deviceId, null);
   // Save selected camera to localStorage
   localStorage.setItem('selectedCamera', deviceId);
 });
+
+// Flip camera button (for mobile)
+const flipCameraBtn = document.getElementById('flipCameraBtn');
+if (flipCameraBtn) {
+  flipCameraBtn.addEventListener('click', async () => {
+    const currentFacingMode = localStorage.getItem('facingMode') || 'user';
+    const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    
+    try {
+      await startCamera(null, newFacingMode);
+    } catch (error) {
+      console.error('Failed to flip camera:', error);
+      alert('ไม่สามารถสลับกล้องได้');
+    }
+  });
+}
 
 // Capture photo with countdown
 captureBtn.addEventListener('click', async () => {
