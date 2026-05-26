@@ -585,13 +585,16 @@ body {
 .frame-selection-content {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 20px 60px 20px;
+  position: relative;
 }
 
 .frames-grid-container {
   margin-bottom: 32px;
   display: flex;
   justify-content: center;
+  position: relative;
+  z-index: 1;
 }
 
 .frames-grid-with-preview {
@@ -602,6 +605,9 @@ body {
   flex-wrap: wrap;
   max-width: 100%;
   padding: 20px;
+  margin-bottom: 20px;
+  position: relative;
+  z-index: 1;
 }
 
 .frame-preview-card {
@@ -719,12 +725,18 @@ body {
   gap: 16px;
   justify-content: center;
   flex-wrap: wrap;
+  margin-top: 32px;
+  padding: 20px;
+  position: relative;
+  background: var(--background);
+  border-radius: 12px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.frame-actions {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
+.frame-actions .btn {
+  min-width: 180px;
+  position: relative;
+  box-shadow: var(--shadow-lg);
 }
 
 /* Success Screen */
@@ -1110,13 +1122,56 @@ body {
   object-fit: cover;
 }
 
-.frame-delete-btn {
+.frame-item-actions {
   position: absolute;
   top: 8px;
   right: 8px;
-  background: var(--danger-color);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 10;
+}
+
+.frame-item:hover .frame-item-actions {
+  opacity: 1;
+}
+
+/* Overlay badge */
+.overlay-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  border: none;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+  z-index: 5;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.6);
+  }
+}
+
+.frame-edit-btn,
+.frame-delete-btn {
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 2px solid var(--border);
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -1125,13 +1180,20 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
-  z-index: 10;
+  transition: all 0.2s;
+  box-shadow: var(--shadow);
 }
 
-.frame-item:hover .frame-delete-btn {
-  opacity: 1;
+.frame-edit-btn:hover {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  transform: scale(1.1);
+}
+
+.frame-delete-btn {
+  background: var(--danger-color);
+  color: white;
+  border-color: var(--danger-color);
 }
 
 .frame-delete-btn:hover {

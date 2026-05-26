@@ -209,11 +209,21 @@ async function showEventDetail(eventId) {
       event.frames.forEach(frame => {
         const frameDiv = document.createElement('div');
         frameDiv.className = 'frame-item';
+        
+        // Add overlay badge if frame has overlay
+        const overlayBadge = frame.overlayPath ? '<span class="overlay-badge" title="มี Overlay">🎭</span>' : '';
+        
         frameDiv.innerHTML = `
           <img src="${frame.path}" alt="${frame.name}">
-          <button class="frame-delete-btn" data-event-id="${event.id}" data-frame-id="${frame.id}" title="ลบกรอบ">
-            ลบ
-          </button>
+          ${overlayBadge}
+          <div class="frame-item-actions">
+            <button class="frame-edit-btn" data-event-id="${event.id}" data-frame-id="${frame.id}" title="แก้ไขกรอบ">
+              ✏️
+            </button>
+            <button class="frame-delete-btn" data-event-id="${event.id}" data-frame-id="${frame.id}" title="ลบกรอบ">
+              🗑️
+            </button>
+          </div>
         `;
         framesList.appendChild(frameDiv);
       });
@@ -221,7 +231,13 @@ async function showEventDetail(eventId) {
       framesList.innerHTML = '<p style="color: var(--text-secondary);">ยังไม่มีกรอบ</p>';
     }
     
-    // Add event listeners for frame delete buttons
+    // Add event listeners for frame buttons
+    document.querySelectorAll('.frame-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        editFrame(btn.dataset.eventId, btn.dataset.frameId);
+      });
+    });
+    
     document.querySelectorAll('.frame-delete-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         deleteFrame(btn.dataset.eventId, btn.dataset.frameId);
@@ -396,36 +412,88 @@ const frameCanvas = document.getElementById('frameCanvas');
 const ctx = frameCanvas.getContext('2d');
 
 let textElements = [];
+let overlayElements = [];
 let selectedTextIndex = -1;
 let bgImage = null;
 let isTransparent = false;
 let showPhotoAreas = true;
+let editingFrameId = null;
 
-// Photo areas configuration (3 photos: 600x400 each, no margins, 300px top/bottom space)
-// Total: 600x1800 (top 300 + photo1 400 + photo2 400 + photo3 400 + bottom 300 = 1800)
+// Photo areas configuration with margins
+// Canvas: 2400x7200 (scaled to 600x1800 for editor)
+// Each photo: 2200x1467 (centered with 100px side margins, 67px spacing between photos)
+// Scaled down 4x for editor: 550x367 per photo, 25px side margins, 17px spacing
+const photoWidth = 550;   // 2200 / 4
+const photoHeight = 367;  // 1467 / 4
+const sideMargin = 25;    // 100 / 4 (centered)
+const photoSpacing = 17;  // 67 / 4 (rounded)
+
+// Calculate total photos height and center vertically
+const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
+const topMargin = (1800 - totalPhotosHeight) / 2;  // Equal top and bottom margins
+
 const photoAreas = [
-  { x: 0, y: 300, width: 600, height: 400 },    // Photo 1 (ชิดขอบซ้าย-ขวา)
-  { x: 0, y: 700, width: 600, height: 400 },    // Photo 2 (ชิดขอบซ้าย-ขวา)
-  { x: 0, y: 1100, width: 600, height: 400 }    // Photo 3 (ชิดขอบซ้าย-ขวา)
+  { x: sideMargin, y: topMargin, width: photoWidth, height: photoHeight },
+  { x: sideMargin, y: topMargin + photoHeight + photoSpacing, width: photoWidth, height: photoHeight },
+  { x: sideMargin, y: topMargin + (photoHeight * 2) + (photoSpacing * 2), width: photoWidth, height: photoHeight }
 ];
 
 // Open frame editor
 document.getElementById('createFrameBtn').addEventListener('click', () => {
+  editingFrameId = null;
   frameEditorModal.classList.add('active');
+  document.getElementById('frameEditorModal').querySelector('h2').textContent = 'สร้างกรอบรูป';
   initCanvas();
 });
 
+// Edit existing frame
+async function editFrame(eventId, frameId) {
+  try {
+    const response = await fetch(`/api/events/${eventId}`);
+    const event = await response.json();
+    const frame = event.frames.find(f => f.id === frameId);
+    
+    if (!frame) {
+      alert('ไม่พบกรอบที่ต้องการแก้ไข');
+      return;
+    }
+    
+    editingFrameId = frameId;
+    frameEditorModal.classList.add('active');
+    document.getElementById('frameEditorModal').querySelector('h2').textContent = 'แก้ไขกรอบรูป';
+    
+    // Load frame image
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      bgImage = img;
+      initCanvas();
+      redrawCanvas();
+    };
+    img.src = frame.path;
+  } catch (error) {
+    console.error('Failed to load frame:', error);
+    alert('โหลดกรอบไม่สำเร็จ');
+  }
+}
+
 // Initialize canvas
 function initCanvas() {
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, frameCanvas.width, frameCanvas.height);
-  textElements = [];
+  if (!bgImage) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, frameCanvas.width, frameCanvas.height);
+  }
+  if (!editingFrameId) {
+    textElements = [];
+    overlayElements = [];
+    bgImage = null;
+    isTransparent = false;
+  }
   selectedTextIndex = -1;
-  bgImage = null;
-  isTransparent = false;
   showPhotoAreas = true;
   document.getElementById('showPhotoAreas').checked = true;
   updateTextList();
+  updateOverlayList();
   redrawCanvas();
 }
 
@@ -472,6 +540,143 @@ document.getElementById('clearBgImageBtn').addEventListener('click', () => {
   bgImage = null;
   redrawCanvas();
 });
+
+// Overlay image upload
+document.getElementById('uploadOverlayBtn').addEventListener('click', () => {
+  document.getElementById('overlayImageUpload').click();
+});
+
+document.getElementById('overlayImageUpload').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const img = new Image();
+    img.onload = () => {
+      // Calculate aspect ratio
+      const aspectRatio = img.width / img.height;
+      const canvasAspectRatio = frameCanvas.width / frameCanvas.height; // 600/1800 = 1/3
+      
+      let overlayWidth, overlayHeight;
+      
+      // If image aspect ratio matches canvas (full frame overlay)
+      if (Math.abs(aspectRatio - canvasAspectRatio) < 0.1) {
+        // Use full canvas size
+        overlayWidth = frameCanvas.width;
+        overlayHeight = frameCanvas.height;
+      } else {
+        // Default size for logos/small overlays
+        overlayWidth = 200;
+        overlayHeight = 200 / aspectRatio;
+      }
+      
+      const overlayElement = {
+        image: img,
+        x: frameCanvas.width / 2,
+        y: frameCanvas.height / 2,
+        width: overlayWidth,
+        height: overlayHeight,
+        name: file.name
+      };
+      overlayElements.push(overlayElement);
+      updateOverlayList();
+      redrawCanvas();
+    };
+    img.src = event.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// Update overlay list
+function updateOverlayList() {
+  const overlayList = document.getElementById('overlayList');
+  overlayList.innerHTML = '';
+  
+  if (overlayElements.length === 0) {
+    overlayList.innerHTML = '<p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px;">ยังไม่มี overlay</p>';
+    return;
+  }
+  
+  overlayElements.forEach((overlay, index) => {
+    const item = document.createElement('div');
+    item.className = 'overlay-list-item';
+    item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--bg-secondary); border-radius: 4px; margin-top: 8px;';
+    
+    const overlayInfo = document.createElement('div');
+    overlayInfo.style.cssText = 'flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+    overlayInfo.textContent = overlay.name;
+    
+    const overlayActions = document.createElement('div');
+    overlayActions.style.cssText = 'display: flex; gap: 4px;';
+    
+    const btnResize = document.createElement('button');
+    btnResize.className = 'btn-icon-small';
+    btnResize.textContent = '🔍';
+    btnResize.title = 'ปรับขนาด';
+    btnResize.onclick = () => resizeOverlay(index);
+    
+    const btnDelete = document.createElement('button');
+    btnDelete.className = 'btn-icon-small';
+    btnDelete.textContent = '🗑️';
+    btnDelete.title = 'ลบ';
+    btnDelete.onclick = () => deleteOverlay(index);
+    
+    overlayActions.appendChild(btnResize);
+    overlayActions.appendChild(btnDelete);
+    
+    item.appendChild(overlayInfo);
+    item.appendChild(overlayActions);
+    overlayList.appendChild(item);
+  });
+}
+
+// Resize overlay
+function resizeOverlay(index) {
+  const overlay = overlayElements[index];
+  const aspectRatio = overlay.image.width / overlay.image.height;
+  
+  const options = [
+    { label: 'เต็มกรอบ (600x1800)', width: 600, height: 1800 },
+    { label: 'ใหญ่ (400px)', width: 400, height: 400 / aspectRatio },
+    { label: 'กลาง (200px)', width: 200, height: 200 / aspectRatio },
+    { label: 'เล็ก (100px)', width: 100, height: 100 / aspectRatio },
+    { label: 'กำหนดเอง', width: null, height: null }
+  ];
+  
+  let message = 'เลือกขนาด:\n';
+  options.forEach((opt, i) => {
+    message += `${i + 1}. ${opt.label}\n`;
+  });
+  
+  const choice = prompt(message, '1');
+  if (!choice) return;
+  
+  const selectedIndex = parseInt(choice) - 1;
+  if (selectedIndex >= 0 && selectedIndex < options.length) {
+    if (options[selectedIndex].width === null) {
+      // Custom size
+      const newSize = prompt('ใส่ความกว้าง (px):', overlay.width);
+      if (newSize && !isNaN(newSize)) {
+        const size = parseInt(newSize);
+        overlayElements[index].width = size;
+        overlayElements[index].height = size / aspectRatio;
+      }
+    } else {
+      // Preset size
+      overlayElements[index].width = options[selectedIndex].width;
+      overlayElements[index].height = options[selectedIndex].height;
+    }
+    redrawCanvas();
+  }
+}
+
+// Delete overlay
+function deleteOverlay(index) {
+  overlayElements.splice(index, 1);
+  updateOverlayList();
+  redrawCanvas();
+}
 
 // Font size slider
 document.getElementById('fontSize').addEventListener('input', (e) => {
@@ -648,6 +853,11 @@ function redrawCanvas() {
     });
   }
   
+  // Draw overlay elements
+  overlayElements.forEach((overlay) => {
+    ctx.drawImage(overlay.image, overlay.x - overlay.width / 2, overlay.y - overlay.height / 2, overlay.width, overlay.height);
+  });
+  
   // Draw text elements
   textElements.forEach((textEl) => {
     ctx.fillStyle = textEl.color;
@@ -677,7 +887,7 @@ document.getElementById('saveFrameBtn').addEventListener('click', async () => {
     return;
   }
   
-  // Create final canvas WITHOUT photo areas overlay
+  // Create final canvas WITHOUT photo areas overlay and WITHOUT overlay elements
   const finalCanvas = document.createElement('canvas');
   finalCanvas.width = frameCanvas.width;
   finalCanvas.height = frameCanvas.height;
@@ -694,7 +904,7 @@ document.getElementById('saveFrameBtn').addEventListener('click', async () => {
     finalCtx.drawImage(bgImage, 0, 0, finalCanvas.width, finalCanvas.height);
   }
   
-  // Draw text elements (NO photo areas in final output)
+  // Draw text elements (NO photo areas, NO overlays in base frame)
   textElements.forEach((textEl) => {
     finalCtx.fillStyle = textEl.color;
     finalCtx.textAlign = 'center';
@@ -708,25 +918,62 @@ document.getElementById('saveFrameBtn').addEventListener('click', async () => {
     finalCtx.fillText(textEl.text, textEl.x, textEl.y);
   });
   
-  // Convert to data URL
+  // Convert base frame to data URL
   const frameData = finalCanvas.toDataURL('image/png');
+  
+  // Create overlay canvas (if overlays exist)
+  let overlayData = null;
+  if (overlayElements.length > 0) {
+    const overlayCanvas = document.createElement('canvas');
+    overlayCanvas.width = frameCanvas.width;
+    overlayCanvas.height = frameCanvas.height;
+    const overlayCtx = overlayCanvas.getContext('2d');
+    
+    // Draw overlay elements on transparent background
+    overlayElements.forEach((overlay) => {
+      overlayCtx.drawImage(overlay.image, overlay.x - overlay.width / 2, overlay.y - overlay.height / 2, overlay.width, overlay.height);
+    });
+    
+    overlayData = overlayCanvas.toDataURL('image/png');
+  }
+  
   const frameName = `custom_frame_${Date.now()}.png`;
   
   try {
-    const response = await fetch(`/api/events/${currentEvent.id}/frames`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
-      body: JSON.stringify({
-        frameData: frameData,
-        frameName: frameName
-      })
-    });
+    let response;
+    if (editingFrameId) {
+      // Update existing frame
+      response = await fetch(`/api/events/${currentEvent.id}/frames/${editingFrameId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          frameData: frameData,
+          overlayData: overlayData,
+          frameName: frameName
+        })
+      });
+    } else {
+      // Create new frame
+      response = await fetch(`/api/events/${currentEvent.id}/frames`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          frameData: frameData,
+          overlayData: overlayData,
+          frameName: frameName
+        })
+      });
+    }
     
     if (response.ok) {
       frameEditorModal.classList.remove('active');
+      editingFrameId = null;
       await showEventDetail(currentEvent.id);
       showToast('บันทึกกรอบสำเร็จ');
     } else {
@@ -737,9 +984,10 @@ document.getElementById('saveFrameBtn').addEventListener('click', async () => {
   }
 });
 
-// Canvas drag for text (optional enhancement)
+// Canvas drag for text and overlays
 let isDragging = false;
 let dragIndex = -1;
+let dragType = null; // 'text' or 'overlay'
 
 frameCanvas.addEventListener('mousedown', (e) => {
   const rect = frameCanvas.getBoundingClientRect();
@@ -747,6 +995,22 @@ frameCanvas.addEventListener('mousedown', (e) => {
   const scaleY = frameCanvas.height / rect.height;
   const x = (e.clientX - rect.left) * scaleX;
   const y = (e.clientY - rect.top) * scaleY;
+  
+  // Check if clicked on overlay (check overlays first, they're on top)
+  for (let i = overlayElements.length - 1; i >= 0; i--) {
+    const overlay = overlayElements[i];
+    const left = overlay.x - overlay.width / 2;
+    const top = overlay.y - overlay.height / 2;
+    
+    if (x >= left && x <= left + overlay.width &&
+        y >= top && y <= top + overlay.height) {
+      isDragging = true;
+      dragIndex = i;
+      dragType = 'overlay';
+      frameCanvas.style.cursor = 'move';
+      return;
+    }
+  }
   
   // Check if clicked on text
   for (let i = textElements.length - 1; i >= 0; i--) {
@@ -760,8 +1024,9 @@ frameCanvas.addEventListener('mousedown', (e) => {
         y >= textEl.y - textHeight / 2 && y <= textEl.y + textHeight / 2) {
       isDragging = true;
       dragIndex = i;
+      dragType = 'text';
       frameCanvas.style.cursor = 'move';
-      break;
+      return;
     }
   }
 });
@@ -775,19 +1040,26 @@ frameCanvas.addEventListener('mousemove', (e) => {
   const x = (e.clientX - rect.left) * scaleX;
   const y = (e.clientY - rect.top) * scaleY;
   
-  textElements[dragIndex].x = x;
-  textElements[dragIndex].y = y;
+  if (dragType === 'text') {
+    textElements[dragIndex].x = x;
+    textElements[dragIndex].y = y;
+  } else if (dragType === 'overlay') {
+    overlayElements[dragIndex].x = x;
+    overlayElements[dragIndex].y = y;
+  }
   redrawCanvas();
 });
 
 frameCanvas.addEventListener('mouseup', () => {
   isDragging = false;
   dragIndex = -1;
+  dragType = null;
   frameCanvas.style.cursor = 'default';
 });
 
 frameCanvas.addEventListener('mouseleave', () => {
   isDragging = false;
   dragIndex = -1;
+  dragType = null;
   frameCanvas.style.cursor = 'default';
 });

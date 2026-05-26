@@ -361,15 +361,37 @@ async function generateFramePreview(frame, canvas) {
     frameImg.onerror = reject;
   });
   
-  // Draw frame
+  // Load overlay image (if exists)
+  let overlayImg = null;
+  if (frame.overlayPath) {
+    overlayImg = new Image();
+    overlayImg.crossOrigin = 'anonymous';
+    overlayImg.src = frame.overlayPath;
+    
+    await new Promise((resolve) => {
+      overlayImg.onload = resolve;
+      overlayImg.onerror = () => resolve(); // Continue even if overlay fails
+    });
+  }
+  
+  // Photo dimensions scaled down 8x
+  const photoWidth = 275;  // 2200 / 8
+  const photoHeight = 183; // 1467 / 8 (rounded)
+  const sideMargin = 13;   // 100 / 8 (rounded, centered)
+  const photoSpacing = 8;  // 67 / 8 (rounded)
+  
+  // Calculate total photos height and center vertically
+  const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
+  const topMargin = (900 - totalPhotosHeight) / 2;  // Equal top and bottom margins
+  
+  // Clear canvas first
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // LAYER 1: Draw frame as background
   ctx.drawImage(frameImg, 0, 0, 300, 900);
   
-  // Photo dimensions: 3:2 ratio (300x200 for preview)
-  const photoHeight = 200; // 3:2 ratio scaled down
-  const photoWidth = 300;
-  const topMargin = 150; // Scaled margin
-  
-  // Draw photos (already in 3:2 ratio, just scale down)
+  // LAYER 2: Draw photos (ALWAYS VISIBLE)
+  ctx.save();
   for (let i = 0; i < capturedPhotos.length; i++) {
     const img = new Image();
     img.src = capturedPhotos[i];
@@ -378,10 +400,14 @@ async function generateFramePreview(frame, canvas) {
       img.onload = resolve;
     });
     
-    const y = topMargin + (i * photoHeight);
-    
-    // Draw image to fill the area (cover fit)
-    ctx.drawImage(img, 0, y, photoWidth, photoHeight);
+    const y = topMargin + (i * (photoHeight + photoSpacing));
+    ctx.drawImage(img, sideMargin, y, photoWidth, photoHeight);
+  }
+  ctx.restore();
+  
+  // LAYER 3: Draw overlay on top (if exists)
+  if (overlayImg) {
+    ctx.drawImage(overlayImg, 0, 0, 300, 900);
   }
 }
 
@@ -445,7 +471,7 @@ document.getElementById('savePhotosBtn').addEventListener('click', async () => {
     // Generate composite locally first for immediate printing
     const frame = eventData.frames.find(f => f.id === selectedFrameId);
     if (frame) {
-      const localComposite = await generateLocalComposite(capturedPhotos, frame.path);
+      const localComposite = await generateLocalComposite(capturedPhotos, frame.path, frame.overlayPath);
       
       // Print immediately
       printPhoto(localComposite);
@@ -468,8 +494,8 @@ document.getElementById('savePhotosBtn').addEventListener('click', async () => {
 });
 
 // Generate composite locally for immediate printing
-async function generateLocalComposite(photos, frameUrl) {
-  return new Promise((resolve, reject) => {
+async function generateLocalComposite(photos, frameUrl, overlayUrl) {
+  return new Promise(async (resolve, reject) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
@@ -478,45 +504,82 @@ async function generateLocalComposite(photos, frameUrl) {
     canvas.width = 4800;
     canvas.height = 7200;
     
-    const photoHeight = 1600; // 3:2 ratio
-    const topMargin = 1200;
+    const photoWidth = 2200;  // Centered with 100px margins on each side
+    const photoHeight = 1467; // 3:2 ratio
+    const sideMargin = 100;   // Center horizontally
+    const photoSpacing = 67;  // Reduced spacing between photos
+    
+    // Calculate total photos height and center vertically
+    const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
+    const topMargin = (7200 - totalPhotosHeight) / 2;  // Equal top and bottom margins
     
     // Load frame
     const frameImg = new Image();
     frameImg.crossOrigin = 'anonymous';
+    
+    // Load overlay (if exists)
+    let overlayImg = null;
+    if (overlayUrl) {
+      overlayImg = new Image();
+      overlayImg.crossOrigin = 'anonymous';
+      overlayImg.src = overlayUrl;
+      await new Promise((res) => {
+        overlayImg.onload = res;
+        overlayImg.onerror = () => res(); // Continue even if overlay fails
+      });
+    }
     frameImg.onload = async () => {
-      // Draw first composite (left side)
+      // Clear canvas first
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // === LEFT SIDE ===
+      // LAYER 1: Draw frame as background
       ctx.drawImage(frameImg, 0, 0, 2400, 7200);
       
-      // Draw photos on left side
+      // LAYER 2: Draw photos (ALWAYS VISIBLE)
+      ctx.save();
       for (let i = 0; i < photos.length; i++) {
         const img = new Image();
         img.src = photos[i];
         
         await new Promise((resolveImg) => {
           img.onload = () => {
-            const y = topMargin + (i * photoHeight);
-            ctx.drawImage(img, 0, y, 2400, photoHeight);
+            const y = topMargin + (i * (photoHeight + photoSpacing));
+            ctx.drawImage(img, sideMargin, y, photoWidth, photoHeight);
             resolveImg();
           };
         });
       }
+      ctx.restore();
       
-      // Draw second composite (right side) - duplicate
+      // LAYER 3: Draw overlay (if exists) - left side
+      if (overlayImg) {
+        ctx.drawImage(overlayImg, 0, 0, 2400, 7200);
+      }
+      
+      // === RIGHT SIDE ===
+      // LAYER 1: Draw frame as background
       ctx.drawImage(frameImg, 2400, 0, 2400, 7200);
       
-      // Draw photos on right side
+      // LAYER 2: Draw photos (ALWAYS VISIBLE)
+      ctx.save();
       for (let i = 0; i < photos.length; i++) {
         const img = new Image();
         img.src = photos[i];
         
         await new Promise((resolveImg) => {
           img.onload = () => {
-            const y = topMargin + (i * photoHeight);
-            ctx.drawImage(img, 2400, y, 2400, photoHeight);
+            const y = topMargin + (i * (photoHeight + photoSpacing));
+            ctx.drawImage(img, 2400 + sideMargin, y, photoWidth, photoHeight);
             resolveImg();
           };
         });
+      }
+      ctx.restore();
+      
+      // LAYER 3: Draw overlay (if exists) - right side
+      if (overlayImg) {
+        ctx.drawImage(overlayImg, 2400, 0, 2400, 7200);
       }
       
       // Return as data URL

@@ -196,7 +196,7 @@ app.delete('/api/events/:id', authMiddleware, async (req, res) => {
 // Upload frame (admin only)
 app.post('/api/events/:id/frames', authMiddleware, async (req, res) => {
   try {
-    const { frameData, frameName } = req.body;
+    const { frameData, overlayData, frameName } = req.body;
     
     if (!frameData) {
       return res.status(400).json({ error: 'No frame data provided' });
@@ -218,10 +218,22 @@ app.post('/api/events/:id/frames', authMiddleware, async (req, res) => {
       resource_type: 'image'
     });
     
+    // Upload overlay to Cloudinary (if exists)
+    let overlayUrl = null;
+    if (overlayData) {
+      const overlayUploadResult = await cloudinary.uploader.upload(overlayData, {
+        folder: `${cloudinaryFolder}/overlays`,
+        public_id: `${frameId}_overlay`,
+        resource_type: 'image'
+      });
+      overlayUrl = overlayUploadResult.secure_url;
+    }
+    
     const frame = {
       id: frameId,
       name: frameName || `Frame ${event.frames.length + 1}`,
-      path: uploadResult.secure_url
+      path: uploadResult.secure_url,
+      overlayPath: overlayUrl
     };
     
     event.frames.push(frame);
@@ -231,6 +243,74 @@ app.post('/api/events/:id/frames', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Frame upload error:', error);
     res.status(500).json({ error: 'Failed to upload frame' });
+  }
+});
+
+// Update frame (admin only)
+app.put('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, res) => {
+  try {
+    const { frameData, overlayData, frameName } = req.body;
+    
+    if (!frameData) {
+      return res.status(400).json({ error: 'No frame data provided' });
+    }
+    
+    const event = await db.getEventById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    
+    // Find frame
+    const frameIndex = event.frames.findIndex(f => f.id === req.params.frameId);
+    if (frameIndex === -1) {
+      return res.status(404).json({ error: 'Frame not found' });
+    }
+    
+    // Delete old frame from Cloudinary
+    const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
+    try {
+      await cloudinary.uploader.destroy(`${cloudinaryFolder}/frames/${req.params.frameId}`);
+      // Delete old overlay if exists
+      if (event.frames[frameIndex].overlayPath) {
+        await cloudinary.uploader.destroy(`${cloudinaryFolder}/overlays/${req.params.frameId}_overlay`);
+      }
+    } catch (error) {
+      console.error('Failed to delete old frame from Cloudinary:', error);
+    }
+    
+    // Upload new frame to Cloudinary
+    const uploadResult = await cloudinary.uploader.upload(frameData, {
+      folder: `${cloudinaryFolder}/frames`,
+      public_id: req.params.frameId,
+      resource_type: 'image'
+    });
+    
+    // Upload overlay to Cloudinary (if exists)
+    let overlayUrl = null;
+    if (overlayData) {
+      const overlayUploadResult = await cloudinary.uploader.upload(overlayData, {
+        folder: `${cloudinaryFolder}/overlays`,
+        public_id: `${req.params.frameId}_overlay`,
+        resource_type: 'image'
+      });
+      overlayUrl = overlayUploadResult.secure_url;
+    }
+    
+    // Update frame
+    event.frames[frameIndex] = {
+      id: req.params.frameId,
+      name: frameName || event.frames[frameIndex].name,
+      path: uploadResult.secure_url,
+      overlayPath: overlayUrl
+    };
+    
+    await db.updateEvent(event.id, event);
+    
+    res.json(event.frames[frameIndex]);
+  } catch (error) {
+    console.error('Frame update error:', error);
+    res.status(500).json({ error: 'Failed to update frame' });
   }
 });
 
@@ -308,7 +388,11 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
     let compositePath = null;
     
     if (frame) {
-      compositePath = await generateCompositeImage(savedPhotos, frame.path, photoSetFolder);
+      try {
+        compositePath = await generateCompositeImage(savedPhotos, frame.path, frame.overlayPath, photoSetFolder);
+      } catch (error) {
+        console.error('Composite generation failed:', error);
+      }
     }
     
     // Generate GIF
@@ -377,24 +461,33 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
 });
 
 // Helper function to generate composite image
-async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder) {
+async function generateCompositeImage(photoUrls, frameUrl, overlayUrl, cloudinaryFolder) {
   try {
     // Canvas size for 2x6 inch at 600 DPI = 2400x7200 pixels
-    // Each photo is 2400x1600 (3:2 ratio), with 1200px margins top and bottom
+    // Each photo is 2200x1467 (3:2 ratio), centered with equal top/bottom margins
     const width = 2400;
     const height = 7200;
-    const photoHeight = 1600; // 3:2 ratio
-    const topMargin = 1200;
+    const photoWidth = 2200;  // Centered with 100px margins on each side
+    const photoHeight = 1467; // 3:2 ratio
+    const sideMargin = 100;   // Center horizontally: (2400 - 2200) / 2 = 100px
+    const photoSpacing = 67;  // Reduced spacing between photos
+    
+    // Calculate total photos height and center vertically
+    const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
+    const topMargin = (height - totalPhotosHeight) / 2;  // Equal top and bottom margins
     
     // Download photos from Cloudinary and prepare buffers
     const photoBuffers = [];
     for (let i = 0; i < photoUrls.length; i++) {
       const response = await fetch(photoUrls[i]);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch photo ${i + 1}: ${response.status} ${response.statusText}`);
+      }
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       
       const photoBuffer = await sharp(buffer)
-        .resize(width, photoHeight, { 
+        .resize(photoWidth, photoHeight, { 
           fit: 'cover',
           position: 'center'
         })
@@ -402,21 +495,58 @@ async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder) {
       
       photoBuffers.push({
         input: photoBuffer,
-        top: topMargin + (i * photoHeight),
-        left: 0
+        top: Math.round(topMargin + (i * (photoHeight + photoSpacing))),
+        left: sideMargin
       });
     }
     
     // Download frame from Cloudinary
     const frameResponse = await fetch(frameUrl);
+    if (!frameResponse.ok) {
+      throw new Error(`Failed to fetch frame: ${frameResponse.status} ${frameResponse.statusText}`);
+    }
     const frameArrayBuffer = await frameResponse.arrayBuffer();
     const frameBuffer = Buffer.from(frameArrayBuffer);
     
-    // Create composite with high quality for large images
-    const compositeBuffer = await sharp(frameBuffer)
+    // Resize frame
+    const resizedFrame = await sharp(frameBuffer)
       .resize(width, height)
+      .toBuffer();
+    
+    // Create composite: Frame background + Photos
+    let compositeBuffer = await sharp(resizedFrame)
       .composite(photoBuffers)
-      .jpeg({ quality: 95, progressive: true }) // คุณภาพสูงสำหรับภาพขนาดใหญ่
+      .toBuffer();
+    
+    // Add overlay if exists
+    if (overlayUrl) {
+      try {
+        const overlayResponse = await fetch(overlayUrl);
+        if (!overlayResponse.ok) {
+          throw new Error(`Failed to fetch overlay: ${overlayResponse.status} ${overlayResponse.statusText}`);
+        }
+        const overlayArrayBuffer = await overlayResponse.arrayBuffer();
+        const overlayBuffer = Buffer.from(overlayArrayBuffer);
+        
+        const resizedOverlay = await sharp(overlayBuffer)
+          .resize(width, height)
+          .toBuffer();
+        
+        compositeBuffer = await sharp(compositeBuffer)
+          .composite([{
+            input: resizedOverlay,
+            blend: 'over'
+          }])
+          .toBuffer();
+      } catch (error) {
+        console.error('Overlay processing error:', error);
+        // Continue without overlay
+      }
+    }
+    
+    // Convert to JPEG
+    compositeBuffer = await sharp(compositeBuffer)
+      .jpeg({ quality: 95, progressive: true })
       .toBuffer();
     
     // Upload composite to Cloudinary with high quality
@@ -425,14 +555,14 @@ async function generateCompositeImage(photoUrls, frameUrl, cloudinaryFolder) {
       folder: cloudinaryFolder,
       public_id: 'composite',
       resource_type: 'image',
-      quality: 'auto:best', // คุณภาพสูงสุดสำหรับภาพขนาดใหญ่
+      quality: 'auto:best',
       fetch_format: 'auto'
     });
     
     return uploadResult.secure_url;
   } catch (error) {
-    console.error('Composite generation error:', error);
-    return null;
+    console.error('Composite generation error:', error.message);
+    throw error;
   }
 }
 
