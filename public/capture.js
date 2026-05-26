@@ -75,7 +75,13 @@ async function init() {
 // Initialize camera
 async function initCamera() {
   try {
-    // Get available cameras
+    // Get last facing mode preference
+    const lastFacingMode = localStorage.getItem('facingMode') || 'environment';
+    
+    // Start camera with facing mode (works better on mobile)
+    await startCamera(null, lastFacingMode);
+    
+    // Get available cameras after starting
     const devices = await navigator.mediaDevices.enumerateDevices();
     const videoDevices = devices.filter(device => device.kind === 'videoinput');
     
@@ -88,32 +94,23 @@ async function initCamera() {
       cameraSelect.appendChild(option);
     });
     
-    // Get last selected camera from localStorage
-    const lastSelectedCamera = localStorage.getItem('selectedCamera');
-    const lastFacingMode = localStorage.getItem('facingMode') || 'user';
-    let selectedDevice = null;
+    // Detect if mobile device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    if (lastSelectedCamera && videoDevices.find(d => d.deviceId === lastSelectedCamera)) {
-      // Use last selected camera
-      selectedDevice = lastSelectedCamera;
-      cameraSelect.value = lastSelectedCamera;
-    } else if (videoDevices.length > 0) {
-      // Use first camera or try to use facing mode
-      selectedDevice = videoDevices[0].deviceId;
-    }
-    
-    // Start camera with facing mode preference for mobile
-    if (selectedDevice) {
-      await startCamera(selectedDevice, lastFacingMode);
-    } else {
-      // If no device ID, try with facing mode only (mobile)
-      await startCamera(null, lastFacingMode);
-    }
-    
-    // Show/hide flip camera button based on device count
+    // Show/hide controls based on device
     const flipBtn = document.getElementById('flipCameraBtn');
     if (flipBtn) {
-      flipBtn.style.display = videoDevices.length > 1 ? 'block' : 'none';
+      // Always show flip button on mobile, or when multiple cameras detected
+      if (isMobile || videoDevices.length > 1) {
+        flipBtn.style.display = 'block';
+      } else {
+        flipBtn.style.display = 'none';
+      }
+    }
+    
+    // Hide camera select on mobile (use flip button instead)
+    if (isMobile) {
+      cameraSelect.style.display = 'none';
     }
   } catch (error) {
     console.error('Camera initialization error:', error);
@@ -122,7 +119,7 @@ async function initCamera() {
 }
 
 // Start camera
-async function startCamera(deviceId, facingMode = 'user') {
+async function startCamera(deviceId, facingMode = 'environment') {
   try {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
@@ -156,6 +153,8 @@ async function startCamera(deviceId, facingMode = 'user') {
     
     // Store current facing mode
     localStorage.setItem('facingMode', facingMode);
+    
+    console.log('Camera started with facingMode:', facingMode);
   } catch (error) {
     console.error('Camera start error:', error);
     alert('ไม่สามารถเปิดกล้องได้');

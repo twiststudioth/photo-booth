@@ -1368,7 +1368,8 @@ body {
   .camera-controls {
     top: 12px;
     right: 12px;
-    flex-direction: column;
+    flex-direction: row;
+    gap: 8px;
   }
   
   .camera-select {
@@ -1377,13 +1378,15 @@ body {
   }
   
   .btn-flip-camera {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 2px solid white;
   }
   
   .btn-flip-camera svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
   }
   
   /* Footer responsive */
@@ -1489,6 +1492,23 @@ body {
   .viewer-actions .btn {
     font-size: 14px;
     padding: 10px 16px;
+  }
+  
+  /* Camera controls for small mobile */
+  .camera-controls {
+    top: 8px;
+    right: 8px;
+  }
+  
+  .btn-flip-camera {
+    width: 48px;
+    height: 48px;
+    background: rgba(0, 0, 0, 0.85);
+  }
+  
+  .btn-flip-camera svg {
+    width: 22px;
+    height: 22px;
   }
   
   /* Footer mobile */
