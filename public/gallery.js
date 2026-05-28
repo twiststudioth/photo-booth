@@ -16,6 +16,8 @@ const currentPhoto = document.getElementById('currentPhoto');
 const photoIndex = document.getElementById('photoIndex');
 const deleteSetBtn = document.getElementById('deleteSetBtn');
 const photoLoading = document.getElementById('photoLoading');
+const qrcodeModal = document.getElementById('qrcodeModal');
+const showQRCodeBtn = document.getElementById('showQRCodeBtn');
 
 // Check if admin
 const authToken = localStorage.getItem('authToken');
@@ -354,7 +356,7 @@ deleteSetBtn.addEventListener('click', async () => {
 });
 
 // Close modal
-document.querySelectorAll('.close-btn').forEach(btn => {
+document.querySelectorAll('.close-btn:not(.qrcode-close-btn)').forEach(btn => {
   btn.addEventListener('click', () => {
     photoViewerModal.classList.remove('active');
     // Reset photo display
@@ -364,6 +366,51 @@ document.querySelectorAll('.close-btn').forEach(btn => {
     }
     hidePhotoLoading();
   });
+});
+
+// Close QR Code modal
+document.querySelector('.qrcode-close-btn').addEventListener('click', (e) => {
+  e.stopPropagation(); // ป้องกันไม่ให้ event ลุกลามไปที่ parent
+  qrcodeModal.classList.remove('active');
+});
+
+// Show QR Code button
+showQRCodeBtn.addEventListener('click', async () => {
+  if (!currentPhotoSet) return;
+  
+  // ตรวจสอบว่า QRCode library โหลดแล้ว
+  if (typeof QRCode === 'undefined') {
+    console.error('QRCode library not loaded');
+    alert('ไม่สามารถสร้าง QR Code ได้ กรุณาลองใหม่อีกครั้ง');
+    return;
+  }
+  
+  // สร้าง QR Code URL
+  const photoUrl = `${window.location.origin}/view.html?id=${currentPhotoSet.id}`;
+  
+  // แสดง modal
+  qrcodeModal.classList.add('active');
+  
+  // สร้าง QR Code
+  const qrcodeCanvas = document.getElementById('qrcodeCanvas');
+  
+  try {
+    // ล้าง QR Code เก่า
+    qrcodeCanvas.innerHTML = '';
+    
+    // สร้าง QR Code ใหม่ด้วย qrcodejs
+    new QRCode(qrcodeCanvas, {
+      text: photoUrl,
+      width: 300,
+      height: 300,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+  } catch (error) {
+    console.error('QR Code generation error:', error);
+    alert('ไม่สามารถสร้าง QR Code ได้: ' + error.message);
+  }
 });
 
 // Keyboard navigation

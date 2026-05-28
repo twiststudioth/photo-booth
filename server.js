@@ -432,6 +432,116 @@ app.get('/api/events/:id/photos', async (req, res) => {
   }
 });
 
+// Get latest photo for an event (admin only)
+app.get('/api/events/:id/photos/latest', authMiddleware, async (req, res) => {
+  try {
+    const eventPhotos = await db.getPhotosByEventId(req.params.id);
+    
+    if (!eventPhotos || eventPhotos.length === 0) {
+      return res.status(404).json({ error: 'No photos found' });
+    }
+    
+    // Sort by createdAt descending and get the first one
+    eventPhotos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const latestPhoto = eventPhotos[0];
+    
+    res.json(latestPhoto);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch latest photo' });
+  }
+});
+
+// Server-Sent Events for latest photo updates (admin only)
+app.get('/api/events/:id/photos/stream', async (req, res) => {
+  // Check auth from query string (SSE can't send custom headers)
+  const token = req.query.token;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  try {
+    jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+  
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.flushHeaders(); // Flush headers immediately
+  
+  const eventId = req.params.id;
+  let lastPhotoId = null;
+  
+  console.log(`SSE connection opened for event ${eventId}`);
+  
+  // Send initial connection message
+  res.write(': connected\n\n');
+  if (res.flush) res.flush();
+  
+  // Function to check for new photos
+  const checkForNewPhoto = async () => {
+    try {
+      const eventPhotos = await db.getPhotosByEventId(eventId);
+      
+      if (eventPhotos && eventPhotos.length > 0) {
+        eventPhotos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        const latestPhoto = eventPhotos[0];
+        
+        // Send update if it's a new photo or first check
+        if (latestPhoto.id !== lastPhotoId) {
+          console.log(`📤 Sending photo update: ${latestPhoto.id} (previous: ${lastPhotoId})`);
+          lastPhotoId = latestPhoto.id;
+          // Send as named event
+          res.write(`event: photo\n`);
+          res.write(`data: ${JSON.stringify(latestPhoto)}\n\n`);
+          if (res.flush) res.flush();
+        }
+      }
+    } catch (error) {
+      console.error('SSE check error:', error);
+    }
+  };
+  
+  // Send initial data immediately
+  await checkForNewPhoto();
+  
+  // Check every 2 seconds for new photos
+  const interval = setInterval(checkForNewPhoto, 2000);
+  
+  // Send heartbeat every 15 seconds to keep connection alive
+  const heartbeatInterval = setInterval(() => {
+    res.write(': heartbeat\n\n');
+    if (res.flush) res.flush();
+  }, 15000);
+  
+  // Clean up on client disconnect
+  req.on('close', () => {
+    console.log(`SSE connection closed for event ${eventId}`);
+    clearInterval(interval);
+    clearInterval(heartbeatInterval);
+    res.end();
+  });
+});
+
+// Get single photo set by ID (for QR code access)
+app.get('/api/photos/:id', async (req, res) => {
+  try {
+    const photoSet = await db.getPhotoById(req.params.id);
+    
+    if (!photoSet) {
+      return res.status(404).json({ error: 'Photo set not found' });
+    }
+    
+    res.json(photoSet);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch photo set' });
+  }
+});
+
 // Delete photo set (admin only)
 app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
   try {
@@ -638,6 +748,14 @@ app.get('/capture.html', (req, res) => {
 
 app.get('/gallery.html', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'gallery.html'));
+});
+
+app.get('/latest.html', (req, res) => {
+  res.sendFile(join(__dirname, 'public', 'latest.html'));
+});
+
+app.get('/view.html', (req, res) => {
+  res.sendFile(join(__dirname, 'public', 'view.html'));
 });
 
 // Start server

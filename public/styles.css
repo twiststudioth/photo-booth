@@ -1864,3 +1864,227 @@ body {
     max-height: 50vh;
   }
 }
+
+/* QR Code Card in Gallery */
+.photo-set-qr {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: white;
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 10;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.photo-set-qr:hover {
+  transform: scale(1.05);
+}
+
+.qr-canvas-small {
+  display: block;
+  border-radius: 4px;
+}
+
+.qr-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin: 0;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Make photo-set-card relative for absolute positioning */
+.photo-set-card {
+  position: relative;
+}
+
+/* QR Code Modal for Gallery */
+.qrcode-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.qrcode-modal.active {
+  display: flex;
+}
+
+.qrcode-modal-content-box {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  max-width: 500px;
+  width: 90%;
+  position: relative;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.qrcode-modal-inner {
+  text-align: center;
+}
+
+.qrcode-modal-inner h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+}
+
+.qrcode-modal-inner .qrcode-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 30px;
+}
+
+.qrcode-display-modal {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.qrcode-display-modal canvas {
+  display: block;
+  border-radius: 8px;
+}
+
+.qrcode-modal-inner .qrcode-hint {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Photo Page Styles */
+.photo-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.photo-header h1 {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.photo-filename {
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+.photo-viewer-content {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: var(--shadow-lg);
+}
+
+.photo-display {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto 30px;
+  background: #f8fafc;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-display img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.photo-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.btn-nav {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 24px;
+}
+
+.btn-nav:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: scale(1.1);
+}
+
+.btn-nav:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.photo-info {
+  text-align: center;
+  font-size: 16px;
+  color: var(--text-secondary);
+  min-width: 150px;
+}
+
+.photo-actions {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.error-message {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.error-icon {
+  width: 80px;
+  height: 80px;
+  background: #ef4444;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  margin: 0 auto 20px;
+}
+
+.error-message h2 {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+
+.error-message p {
+  color: var(--text-secondary);
+  font-size: 16px;
+}

@@ -198,9 +198,11 @@ async function showEventDetail(eventId) {
     // Links
     const captureUrl = `${window.location.origin}/capture.html?event=${event.id}`;
     const galleryUrl = `${window.location.origin}/gallery.html?event=${event.id}`;
+    const latestUrl = `${window.location.origin}/latest.html?event=${event.id}`;
     
     document.getElementById('captureLink').value = captureUrl;
     document.getElementById('galleryLink').value = galleryUrl;
+    document.getElementById('latestLink').value = latestUrl;
     
     // Frames
     const framesList = document.getElementById('framesList');
@@ -299,6 +301,18 @@ document.getElementById('copyGalleryLink').addEventListener('click', () => {
   input.select();
   navigator.clipboard.writeText(input.value);
   showToast('คัดลอกลิงก์ดูรูปแล้ว');
+});
+
+document.getElementById('copyLatestLink').addEventListener('click', () => {
+  const input = document.getElementById('latestLink');
+  input.select();
+  navigator.clipboard.writeText(input.value);
+  showToast('คัดลอกลิงก์หน้าแสดงรูปล่าสุดแล้ว');
+});
+
+document.getElementById('openLatestLink').addEventListener('click', () => {
+  const url = document.getElementById('latestLink').value;
+  window.open(url, '_blank');
 });
 
 // Toast notification

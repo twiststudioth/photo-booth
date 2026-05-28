@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>รูปล่าสุด - Photo Booth</title>
+  <link rel="preconnect" href="https://res.cloudinary.com">
+  <link rel="dns-prefetch" href="https://res.cloudinary.com">
+  <link rel="stylesheet" href="/fonts/pridi.css">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .latest-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      background: #1e293b;
+    }
+
+    .latest-content {
+      display: flex;
+      gap: 40px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      max-width: 1400px;
+    }
+
+    .latest-photo-section {
+      flex: 1;
+      min-width: 300px;
+      max-width: 500px;
+    }
+
+    .latest-photo-wrapper {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .latest-photo-wrapper img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+
+    .latest-info {
+      text-align: center;
+      margin-top: 15px;
+      color: white;
+    }
+
+    .latest-info h2 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .latest-info p {
+      font-size: 16px;
+      opacity: 0.8;
+    }
+
+    .latest-qr-section {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+
+    .latest-qr-section h3 {
+      font-size: 28px;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .latest-qr-section p {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 30px;
+    }
+
+    .qr-display {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .qr-display canvas {
+      border-radius: 8px;
+    }
+
+    .no-photo-message {
+      text-align: center;
+      color: white;
+      padding: 60px 20px;
+    }
+
+    .no-photo-message h2 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .no-photo-message p {
+      font-size: 18px;
+      opacity: 0.8;
+    }
+
+    .loading-latest {
+      text-align: center;
+      color: white;
+      padding: 60px 20px;
+    }
+
+    .loading-latest .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="latest-container">
+    <div id="loadingLatest" class="loading-latest">
+      <div class="spinner"></div>
+      <h2>กำลังโหลด...</h2>
+    </div>
+
+    <div id="noPhotoMessage" class="no-photo-message" style="display: none;">
+      <h2>ยังไม่มีรูปภาพ</h2>
+      <p>รอรูปใหม่จากการถ่ายภาพ...</p>
+    </div>
+
+    <div id="latestContent" class="latest-content" style="display: none;">
+      <div class="latest-photo-section">
+        <div class="latest-photo-wrapper">
+          <img id="latestPhoto" src="" alt="Latest Photo">
+        </div>
+        <div class="latest-info">
+          <h2 id="latestFileName">-</h2>
+          <p id="latestTime">-</p>
+        </div>
+      </div>
+
+      <div class="latest-qr-section">
+        <h3>สแกนเพื่อดูรูป</h3>
+        <p>ใช้มือถือสแกน QR Code<br>เพื่อดูและบันทึกรูปของคุณ</p>
+        <div class="qr-display" id="qrDisplay"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/qrcode.min.js"></script>
+  <script src="/latest.js?v=3"></script>
+</body>
+</html>

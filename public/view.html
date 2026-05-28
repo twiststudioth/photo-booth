@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>แกลเลอรี่ - Photo Booth</title>
+  <title>รูปภาพของคุณ - Photo Booth</title>
   <link rel="preconnect" href="https://res.cloudinary.com">
   <link rel="dns-prefetch" href="https://res.cloudinary.com">
   <link rel="stylesheet" href="/fonts/pridi.css">
@@ -11,27 +11,61 @@
 </head>
 <body>
   <div class="container">
-    <header class="gallery-header">
-      <h1>แกลเลอรี่รูปภาพ</h1>
-      <div class="header-actions">
-        <h2 id="eventName" class="event-name"></h2>
-      </div>
-    </header>
-
-    <div class="gallery-info">
-      <p>คลิกที่รูปเพื่อดูแบบเต็มจอและดาวน์โหลด</p>
-    </div>
-
     <div id="loadingScreen" class="loading-screen">
       <div class="spinner"></div>
-      <p>กำลังโหลดรูปภาพ...</p>
+      <p>กำลังโหลด...</p>
     </div>
 
-    <div id="galleryContent" style="display: none;">
-      <div id="photoSets" class="photo-sets-grid"></div>
-      
-      <div id="emptyState" class="empty-state" style="display: none;">
-        <p>ยังไม่มีรูปภาพในอีเว้นท์นี้</p>
+    <div id="photoContent" style="display: none;">
+      <header class="photo-header">
+        <h1>รูปภาพของคุณ</h1>
+        <p id="photoFileName" class="photo-filename"></p>
+      </header>
+
+      <div class="photo-viewer-content">
+        <div class="photo-display">
+          <div id="photoLoading" class="photo-loading hidden">
+            <div class="spinner"></div>
+          </div>
+          <img id="currentPhoto" src="" alt="Photo" style="display: none;">
+        </div>
+
+        <div class="photo-controls">
+          <button class="btn-nav prev-btn" id="prevBtn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          
+          <div class="photo-info">
+            <p id="photoIndex">1 / 5</p>
+          </div>
+          
+          <button class="btn-nav next-btn" id="nextBtn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        <div class="photo-actions">
+          <button id="downloadCurrentBtn" class="btn btn-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>ดาวน์โหลดรูปนี้</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="errorScreen" style="display: none;">
+      <div class="error-message">
+        <div class="error-icon">✕</div>
+        <h2>ไม่พบรูปภาพ</h2>
+        <p>ไม่สามารถโหลดรูปภาพได้ กรุณาตรวจสอบ QR Code อีกครั้ง</p>
       </div>
     </div>
     
@@ -62,54 +96,6 @@
     </footer>
   </div>
 
-  <!-- Photo Viewer Modal -->
-  <div id="photoViewerModal" class="modal photo-viewer-modal">
-    <div class="modal-content modal-fullscreen">
-      <button class="close-btn">&times;</button>
-      
-      <div class="photo-viewer">
-        <button class="nav-btn prev-btn">‹</button>
-        <div class="photo-display">
-          <div class="photo-loading" id="photoLoading">
-            <div class="spinner"></div>
-            <p>กำลังโหลดรูป...</p>
-          </div>
-          <img id="currentPhoto" alt="Photo" style="display: none;">
-        </div>
-        <button class="nav-btn next-btn">›</button>
-      </div>
-      
-      <div class="photo-info">
-        <span id="photoIndex">1 / 5</span>
-      </div>
-      
-      <div class="viewer-actions">
-        <button id="downloadCurrentBtn" class="btn btn-primary">ดาวน์โหลดรูปนี้</button>
-        <button id="showQRCodeBtn" class="btn btn-secondary">แสดง QR Code</button>
-        <button id="deleteSetBtn" class="btn btn-danger" style="display: none;">ลบชุดรูป</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- QR Code Modal -->
-  <div id="qrcodeModal" class="modal qrcode-modal">
-    <div class="modal-content qrcode-modal-content-box">
-      <button class="close-btn qrcode-close-btn">&times;</button>
-      
-      <div class="qrcode-modal-inner">
-        <h2>สแกน QR Code เพื่อดูรูป</h2>
-        <p class="qrcode-subtitle">สแกนด้วยมือถือเพื่อดูและบันทึกรูปของคุณ</p>
-        
-        <div class="qrcode-display-modal">
-          <div id="qrcodeCanvas"></div>
-        </div>
-        
-        <p class="qrcode-hint">สแกน QR Code นี้เพื่อเข้าถึงรูปชุดนี้</p>
-      </div>
-    </div>
-  </div>
-
-  <script src="/qrcode.min.js"></script>
-  <script src="/gallery.js"></script>
+  <script src="/view.js"></script>
 </body>
 </html>
