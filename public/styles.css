@@ -892,6 +892,15 @@ body {
   font-size: 14px;
 }
 
+.gallery-info .gallery-notice {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(30, 41, 59, 0.2);
+  font-size: 13px;
+  font-style: italic;
+  opacity: 0.9;
+}
+
 /* Photo Viewer */
 .photo-viewer-modal .modal-content {
   background: #c9c9c9;
@@ -978,6 +987,22 @@ body {
   color: var(--text-primary);
   font-weight: 600;
   border: 2px solid var(--border);
+}
+
+.viewer-notice {
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin: 12px 0;
+  text-align: center;
+}
+
+.viewer-notice p {
+  margin: 0;
+  color: #92400e;
+  font-size: 13px;
+  font-style: italic;
 }
 
 .nav-btn {
@@ -1492,6 +1517,15 @@ body {
   .viewer-actions .btn {
     font-size: 14px;
     padding: 10px 16px;
+  }
+  
+  .viewer-notice {
+    padding: 10px 16px;
+    margin: 10px 0;
+  }
+  
+  .viewer-notice p {
+    font-size: 12px;
   }
   
   /* Camera controls for small mobile */
