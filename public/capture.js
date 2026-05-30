@@ -724,6 +724,185 @@ document.getElementById('takeMoreBtn').addEventListener('click', () => {
 init();
 updateThumbnails();
 
+// ===== KEYBOARD SHORTCUTS =====
+document.addEventListener('keydown', (e) => {
+  // Ignore if typing in input fields
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+    return;
+  }
+  
+  // Get current screen
+  const isCaptureScreen = captureScreen.style.display !== 'none';
+  const isFrameScreen = frameSelectionScreen.style.display !== 'none';
+  const isSuccessScreen = successScreen.style.display !== 'none';
+  
+  // === CAPTURE SCREEN ===
+  if (isCaptureScreen) {
+    // Space or Enter: Capture photo (if camera is visible)
+    if ((e.code === 'Space' || e.code === 'Enter') && video.style.display !== 'none') {
+      e.preventDefault();
+      if (!captureBtn.disabled) {
+        captureBtn.click();
+      }
+    }
+    
+    // R: Retake photo (if preview is visible)
+    if (e.code === 'KeyR' && previewContainer.style.display !== 'none') {
+      e.preventDefault();
+      retakeBtn.click();
+    }
+    
+    // N or Enter: Next photo (if preview is visible)
+    if ((e.code === 'KeyN' || e.code === 'Enter') && previewContainer.style.display !== 'none') {
+      e.preventDefault();
+      nextBtn.click();
+    }
+    
+    // C: Switch camera (if camera select is visible)
+    if (e.code === 'KeyC' && cameraSelect.style.display !== 'none') {
+      e.preventDefault();
+      const options = cameraSelect.options;
+      const currentIndex = cameraSelect.selectedIndex;
+      const nextIndex = (currentIndex + 1) % options.length;
+      cameraSelect.selectedIndex = nextIndex;
+      cameraSelect.dispatchEvent(new Event('change'));
+    }
+    
+    // F: Flip camera (mobile)
+    if (e.code === 'KeyF') {
+      e.preventDefault();
+      const flipBtn = document.getElementById('flipCameraBtn');
+      if (flipBtn && flipBtn.style.display !== 'none') {
+        flipBtn.click();
+      }
+    }
+  }
+  
+  // === FRAME SELECTION SCREEN ===
+  if (isFrameScreen) {
+    // Arrow keys: Navigate frames
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') {
+      e.preventDefault();
+      navigateFrames(-1);
+    }
+    
+    if (e.code === 'ArrowRight' || e.code === 'ArrowDown') {
+      e.preventDefault();
+      navigateFrames(1);
+    }
+    
+    // Enter or S: Save photos
+    if (e.code === 'Enter' || e.code === 'KeyS') {
+      e.preventDefault();
+      const saveBtn = document.getElementById('savePhotosBtn');
+      if (!saveBtn.disabled) {
+        saveBtn.click();
+      }
+    }
+    
+    // B or Escape: Back to photos
+    if (e.code === 'KeyB' || e.code === 'Escape') {
+      e.preventDefault();
+      document.getElementById('backToPhotosBtn').click();
+    }
+    
+    // Number keys 1-9: Select frame directly
+    if (e.code.startsWith('Digit') || e.code.startsWith('Numpad')) {
+      const num = parseInt(e.code.replace('Digit', '').replace('Numpad', ''));
+      if (num >= 1 && num <= 9) {
+        e.preventDefault();
+        selectFrameByIndex(num - 1);
+      }
+    }
+  }
+  
+  // === SUCCESS SCREEN ===
+  if (isSuccessScreen) {
+    // G: View gallery
+    if (e.code === 'KeyG') {
+      e.preventDefault();
+      document.getElementById('viewGalleryBtn').click();
+    }
+    
+    // T or Space or Enter: Take more photos
+    if (e.code === 'KeyT' || e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      document.getElementById('takeMoreBtn').click();
+    }
+  }
+  
+  // === GLOBAL SHORTCUTS ===
+  // H: Show help (all screens)
+  if (e.code === 'KeyH' && e.shiftKey) {
+    e.preventDefault();
+    showKeyboardHelp();
+  }
+});
+
+// Navigate frames with arrow keys
+function navigateFrames(direction) {
+  const cards = Array.from(document.querySelectorAll('.frame-preview-card'));
+  const currentIndex = cards.findIndex(card => card.classList.contains('selected'));
+  
+  if (cards.length === 0) return;
+  
+  let newIndex = currentIndex + direction;
+  
+  // Wrap around
+  if (newIndex < 0) newIndex = cards.length - 1;
+  if (newIndex >= cards.length) newIndex = 0;
+  
+  const newCard = cards[newIndex];
+  const frameId = newCard.dataset.frameId;
+  selectFrameCard(frameId, newCard);
+  
+  // Scroll into view
+  newCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Select frame by index
+function selectFrameByIndex(index) {
+  const cards = Array.from(document.querySelectorAll('.frame-preview-card'));
+  
+  if (index >= 0 && index < cards.length) {
+    const card = cards[index];
+    const frameId = card.dataset.frameId;
+    selectFrameCard(frameId, card);
+    
+    // Scroll into view
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+// Show keyboard shortcuts help
+function showKeyboardHelp() {
+  const helpText = `
+🎹 คีย์บอร์ดช็อตคัต
+
+📸 หน้าถ่ายรูป:
+  Space/Enter - ถ่ายรูป
+  R - ถ่ายใหม่
+  N/Enter - ถัดไป
+  C - สลับกล้อง
+  F - พลิกกล้อง
+
+🖼️ หน้าเลือกกรอบ:
+  ←/→ หรือ ↑/↓ - เลือกกรอบ
+  1-9 - เลือกกรอบโดยตรง
+  Enter/S - บันทึกรูป
+  B/Esc - กลับไปถ่ายใหม่
+
+✅ หน้าสำเร็จ:
+  G - ดูแกลเลอรี่
+  T/Space/Enter - ถ่ายรูปอีก
+
+🌐 ทุกหน้า:
+  Shift+H - แสดงความช่วยเหลือนี้
+  `;
+  
+  alert(helpText);
+}
+
 // Print photo function
 function printPhoto(compositeDataUrl) {
   // Create a hidden iframe for printing

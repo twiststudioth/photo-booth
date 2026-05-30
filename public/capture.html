@@ -51,14 +51,14 @@
         <div class="preview-container" id="previewContainer" style="display: none;">
           <img id="preview" alt="Preview">
           <div class="preview-actions">
-            <button id="retakeBtn" class="btn btn-secondary btn-action">ถ่ายใหม่</button>
-            <button id="nextBtn" class="btn btn-primary btn-action">ถัดไป →</button>
+            <button id="retakeBtn" class="btn btn-secondary btn-action">ถ่ายใหม่ <kbd>R</kbd></button>
+            <button id="nextBtn" class="btn btn-primary btn-action">ถัดไป <kbd>Enter</kbd> →</button>
           </div>
         </div>
 
         <div class="capture-actions" id="captureActions">
           <button id="captureBtn" class="btn btn-primary btn-action">
-            ถ่ายรูป
+            ถ่ายรูป <kbd>Enter</kbd>
           </button>
         </div>
 
@@ -72,13 +72,16 @@
       </header>
 
       <div class="frame-selection-content">
+        <div class="keyboard-hint">
+          <span>💡 ใช้ลูกศร <kbd>←</kbd> <kbd>→</kbd> เพื่อเลือกกรอบ หรือกดเลข <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> ...</span>
+        </div>
         <div class="frames-grid-container">
           <div id="framesGridWithPreview" class="frames-grid-with-preview"></div>
         </div>
 
         <div class="frame-actions">
-          <button id="backToPhotosBtn" class="btn btn-secondary btn-action">← กลับไปถ่ายใหม่</button>
-          <button id="savePhotosBtn" class="btn btn-primary btn-action">บันทึกรูป</button>
+          <button id="backToPhotosBtn" class="btn btn-secondary btn-action">← กลับไปถ่ายใหม่ <kbd>Esc</kbd></button>
+          <button id="savePhotosBtn" class="btn btn-primary btn-action">บันทึกรูป <kbd>Enter</kbd></button>
         </div>
       </div>
     </div>
@@ -90,8 +93,8 @@
         <p id="statusDescription">รูปของคุณถูกบันทึกเรียบร้อยแล้ว</p>
         <p class="success-note" id="statusNote">คุณสามารถดูและดาวน์โหลดรูปได้ในแกลเลอรี่</p>
         <div class="button-group">
-          <button id="viewGalleryBtn" class="btn btn-primary">ดูแกลเลอรี่</button>
-          <button id="takeMoreBtn" class="btn btn-secondary">ถ่ายรูปอีก</button>
+          <button id="viewGalleryBtn" class="btn btn-primary">ดูแกลเลอรี่ <kbd>G</kbd></button>
+          <button id="takeMoreBtn" class="btn btn-secondary">ถ่ายรูปอีก <kbd>Enter</kbd></button>
         </div>
       </div>
     </div>
