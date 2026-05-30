@@ -168,42 +168,78 @@ function openPhotoViewer(photoSet) {
 function updatePhotoDisplay() {
   if (!currentPhotoSet) return;
   
-  // Build photo array: composite, photo1, photo2, photo3, gif
+  // Build photo array: composite, photo1, photo2, photo3, slideshow (แทน gif)
   const photos = [];
   
   if (currentPhotoSet.composite) {
-    photos.push({ src: currentPhotoSet.composite, label: 'รูปพร้อมกรอบ' });
+    photos.push({ src: currentPhotoSet.composite, label: 'รูปพร้อมกรอบ', type: 'composite' });
   }
   
   currentPhotoSet.photos.forEach((photo, index) => {
-    photos.push({ src: photo, label: `รูปที่ ${index + 1}` });
+    photos.push({ src: photo, label: `รูปที่ ${index + 1}`, type: 'photo' });
   });
   
-  if (currentPhotoSet.gif) {
-    photos.push({ src: currentPhotoSet.gif, label: 'GIF Animation' });
-  }
-  
-  // Show loading indicator
-  showPhotoLoading();
+  // เพิ่มรูปที่ 5 เป็น "GIF Animation" (จริงๆ คือ slideshow)
+  photos.push({ src: null, label: 'GIF Animation', type: 'slideshow' });
   
   // Display current photo with optimization
   const currentPhotoData = photos[currentPhotoIndex];
-  const optimizedUrl = optimizeCloudinaryUrl(currentPhotoData.src, 'preview');
   
-  // Preload image
-  const img = new Image();
-  img.onload = () => {
-    currentPhoto.src = optimizedUrl;
-    currentPhoto.style.display = 'block';
-    hidePhotoLoading();
-  };
-  img.onerror = () => {
-    // If optimized fails, try original
-    currentPhoto.src = currentPhotoData.src;
-    currentPhoto.style.display = 'block';
-    hidePhotoLoading();
-  };
-  img.src = optimizedUrl;
+  // ถ้าเป็นรูปที่ 5 (slideshow) ให้เริ่ม slideshow อัตโนมัติ
+  if (currentPhotoData.type === 'slideshow') {
+    // แสดงรูปแรก (ข้าม composite)
+    const firstPhotoIndex = currentPhotoSet.composite ? 1 : 0;
+    const firstPhoto = photos[firstPhotoIndex];
+    
+    showPhotoLoading();
+    const optimizedUrl = optimizeCloudinaryUrl(firstPhoto.src, 'preview');
+    
+    const img = new Image();
+    img.onload = () => {
+      currentPhoto.src = optimizedUrl;
+      currentPhoto.style.display = 'block';
+      hidePhotoLoading();
+      
+      // เริ่ม slideshow อัตโนมัติ
+      if (!isSlideshowMode) {
+        startSlideshow();
+      }
+    };
+    img.onerror = () => {
+      currentPhoto.src = firstPhoto.src;
+      currentPhoto.style.display = 'block';
+      hidePhotoLoading();
+      
+      if (!isSlideshowMode) {
+        startSlideshow();
+      }
+    };
+    img.src = optimizedUrl;
+  } else {
+    // รูปปกติ
+    showPhotoLoading();
+    const optimizedUrl = optimizeCloudinaryUrl(currentPhotoData.src, 'preview');
+    
+    // Preload image
+    const img = new Image();
+    img.onload = () => {
+      currentPhoto.src = optimizedUrl;
+      currentPhoto.style.display = 'block';
+      hidePhotoLoading();
+    };
+    img.onerror = () => {
+      // If optimized fails, try original
+      currentPhoto.src = currentPhotoData.src;
+      currentPhoto.style.display = 'block';
+      hidePhotoLoading();
+    };
+    img.src = optimizedUrl;
+    
+    // หยุด slideshow ถ้ากำลังเล่นอยู่
+    if (isSlideshowMode) {
+      stopSlideshow();
+    }
+  }
   
   photoIndex.textContent = `${currentPhotoIndex + 1} / ${photos.length} - ${currentPhotoData.label}`;
   
@@ -250,18 +286,129 @@ function getPhotoArray() {
   const photos = [];
   if (currentPhotoSet.composite) photos.push(currentPhotoSet.composite);
   photos.push(...currentPhotoSet.photos);
-  if (currentPhotoSet.gif) photos.push(currentPhotoSet.gif);
+  // เพิ่มรูปที่ 5 เป็น slideshow placeholder
+  photos.push('slideshow');
   return photos;
 }
 
-// Download current photo
+// Slideshow state
+let slideshowInterval = null;
+let isSlideshowMode = false;
+
+// Start slideshow (วนรูป 3 รูปอัตโนมัติ)
+function startSlideshow() {
+  if (slideshowInterval) return; // Already running
+  
+  // Build photo array
+  const photos = [];
+  if (currentPhotoSet.composite) {
+    photos.push({ src: currentPhotoSet.composite, label: 'รูปพร้อมกรอบ', type: 'composite' });
+  }
+  currentPhotoSet.photos.forEach((photo, index) => {
+    photos.push({ src: photo, label: `รูปที่ ${index + 1}`, type: 'photo' });
+  });
+  
+  // เริ่มจากรูปแรก (ข้ามรูป composite)
+  const startIndex = currentPhotoSet.composite ? 1 : 0;
+  let slideshowIndex = startIndex;
+  
+  // แสดงรูปแรก
+  const firstPhoto = photos[slideshowIndex];
+  const optimizedUrl = optimizeCloudinaryUrl(firstPhoto.src, 'preview');
+  currentPhoto.src = optimizedUrl;
+  
+  // วนรูปทุก 800ms (เหมือน GIF)
+  slideshowInterval = setInterval(() => {
+    slideshowIndex++;
+    
+    // วนกลับไปรูปแรก (ข้ามรูป composite)
+    if (slideshowIndex >= photos.length) {
+      slideshowIndex = startIndex;
+    }
+    
+    const photo = photos[slideshowIndex];
+    const optimizedUrl = optimizeCloudinaryUrl(photo.src, 'preview');
+    currentPhoto.src = optimizedUrl;
+  }, 800);
+  
+  isSlideshowMode = true;
+}
+
+// Stop slideshow
+function stopSlideshow() {
+  if (slideshowInterval) {
+    clearInterval(slideshowInterval);
+    slideshowInterval = null;
+  }
+  
+  isSlideshowMode = false;
+}
+
+// Download current photo (รวม download GIF)
 document.getElementById('downloadCurrentBtn').addEventListener('click', async () => {
   const photos = getPhotoArray();
-  const photoUrl = photos[currentPhotoIndex];
-  // Use full quality for download
-  const fullQualityUrl = optimizeCloudinaryUrl(photoUrl, 'full');
-  await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_${currentPhotoIndex + 1}`);
+  const currentPhotoData = photos[currentPhotoIndex];
+  
+  // ถ้าเป็นรูปที่ 5 (slideshow) ให้ดาวน์โหลดเป็น GIF
+  if (currentPhotoData === 'slideshow') {
+    await downloadGIF();
+  } else if (currentPhotoIndex === 0 && currentPhotoSet.composite) {
+    // Download composite
+    const fullQualityUrl = optimizeCloudinaryUrl(currentPhotoData, 'full');
+    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_composite`);
+  } else {
+    // Download individual photo
+    const fullQualityUrl = optimizeCloudinaryUrl(currentPhotoData, 'full');
+    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_${currentPhotoIndex}`);
+  }
 });
+
+// Download GIF (สร้าง on-demand)
+async function downloadGIF() {
+  try {
+    const downloadBtn = document.getElementById('downloadCurrentBtn');
+    const originalText = downloadBtn.textContent;
+    
+    if (downloadBtn) {
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = 'กำลังสร้าง GIF...';
+    }
+    
+    // Request GIF from server
+    const response = await fetch(`/api/photos/${currentPhotoSet.id}/gif`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to generate GIF');
+    }
+    
+    const blob = await response.blob();
+    
+    // Download GIF
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = `${currentPhotoSet.fileName}.gif`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+    
+    if (downloadBtn) {
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = originalText;
+    }
+  } catch (error) {
+    console.error('GIF download failed:', error);
+    alert('สร้าง GIF ไม่สำเร็จ กรุณาลองอีกครั้ง');
+    
+    const downloadBtn = document.getElementById('downloadCurrentBtn');
+    if (downloadBtn) {
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = 'ดาวน์โหลดรูปนี้';
+    }
+  }
+}
 
 // Detect if device is iOS
 function isIOS() {
@@ -357,6 +504,8 @@ deleteSetBtn.addEventListener('click', async () => {
 document.querySelectorAll('.close-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     photoViewerModal.classList.remove('active');
+    // Stop slideshow
+    stopSlideshow();
     // Reset photo display
     if (currentPhoto) {
       currentPhoto.style.display = 'none';
@@ -382,6 +531,8 @@ document.addEventListener('keydown', (e) => {
     }
   } else if (e.key === 'Escape') {
     photoViewerModal.classList.remove('active');
+    // Stop slideshow
+    stopSlideshow();
     // Reset photo display
     if (currentPhoto) {
       currentPhoto.style.display = 'none';

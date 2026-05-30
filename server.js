@@ -395,8 +395,7 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
       }
     }
     
-    // Generate GIF
-    const gifPath = await generateGIF(savedPhotos, photoSetFolder);
+    // ไม่สร้าง GIF อัตโนมัติอีกต่อไป - จะสร้างเฉพาะตอน download
     
     // Save photo set data
     const photoSet = {
@@ -405,7 +404,7 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
       fileName,
       photos: savedPhotos,
       composite: compositePath,
-      gif: gifPath,
+      gif: null, // ไม่เก็บ GIF ไว้ล่วงหน้า
       frameId,
       createdAt: new Date().toISOString()
     };
@@ -457,6 +456,32 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete photo set' });
+  }
+});
+
+// Generate GIF on-demand (สร้างเฉพาะตอน download)
+app.get('/api/photos/:id/gif', async (req, res) => {
+  try {
+    const photoSet = await db.getPhotoById(req.params.id);
+    
+    if (!photoSet) {
+      return res.status(404).json({ error: 'Photo set not found' });
+    }
+    
+    // Generate GIF from photos
+    const gifBuffer = await generateGIF(photoSet.photos);
+    
+    if (!gifBuffer) {
+      return res.status(500).json({ error: 'Failed to generate GIF' });
+    }
+    
+    // Send GIF as response
+    res.set('Content-Type', 'image/gif');
+    res.set('Content-Disposition', `attachment; filename="${photoSet.fileName}.gif"`);
+    res.send(gifBuffer);
+  } catch (error) {
+    console.error('GIF generation error:', error);
+    res.status(500).json({ error: 'Failed to generate GIF' });
   }
 });
 
@@ -566,10 +591,11 @@ async function generateCompositeImage(photoUrls, frameUrl, overlayUrl, cloudinar
   }
 }
 
-// Helper function to generate GIF
-async function generateGIF(photoUrls, cloudinaryFolder) {
+// Helper function to generate GIF on-demand (ไม่อัพโหลดเข้า Cloudinary)
+async function generateGIF(photoUrls) {
   try {
-    const width = 600;
+    // ใช้ขนาดเท่ากับรูปต้นฉบับ (3:2 ratio)
+    const width = 900;  // 3:2 ratio
     const height = 600;
     
     const encoder = new GIFEncoder(width, height);
@@ -582,9 +608,12 @@ async function generateGIF(photoUrls, cloudinaryFolder) {
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       
-      // Resize and convert to raw pixel data
+      // Resize and convert to raw pixel data (ใช้ cover แทน contain เพื่อไม่ให้มีขอบขาว)
       const { data } = await sharp(buffer)
-        .resize(width, height, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+        .resize(width, height, { 
+          fit: 'cover',  // ครอปให้เต็มขนาด ไม่มีขอบขาว
+          position: 'center'
+        })
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
@@ -605,18 +634,8 @@ async function generateGIF(photoUrls, cloudinaryFolder) {
     
     encoder.finish();
     
-    // Get GIF buffer
-    const gifBuffer = encoder.out.getData();
-    
-    // Upload GIF to Cloudinary
-    const base64Gif = `data:image/gif;base64,${gifBuffer.toString('base64')}`;
-    const uploadResult = await cloudinary.uploader.upload(base64Gif, {
-      folder: cloudinaryFolder,
-      public_id: 'animation',
-      resource_type: 'image'
-    });
-    
-    return uploadResult.secure_url;
+    // Return GIF buffer (ไม่อัพโหลด)
+    return encoder.out.getData();
   } catch (error) {
     console.error('GIF generation error:', error);
     return null;
