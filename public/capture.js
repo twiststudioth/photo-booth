@@ -657,16 +657,18 @@ document.getElementById('savePhotosBtn').addEventListener('click', async () => {
     // Generate composite locally first for immediate printing
     const frame = eventData.frames.find(f => f.id === selectedFrameId);
     if (frame) {
-      const localComposite = await generateLocalComposite(capturedPhotos, frame.path, frame.overlayPath);
+      // Generate print version (4x6 inch - double)
+      const printComposite = await generateLocalComposite(capturedPhotos, frame.path, frame.overlayPath);
       
-      // Save to local folder if enabled
+      // Save to local folder if enabled (single 2x6 inch)
       if (localBackupEnabled && window.backupDirHandle) {
         const fileName = `${eventData.filePrefix}_${String(eventData.photoCounter + 1).padStart(4, '0')}`;
-        await saveToLocalFolder(localComposite, fileName);
+        const singleComposite = await generateSingleComposite(capturedPhotos, frame.path, frame.overlayPath);
+        await saveToLocalFolder(singleComposite, fileName);
       }
       
-      // Print immediately
-      printPhoto(localComposite);
+      // Print immediately (4x6 inch)
+      printPhoto(printComposite);
       
       // Show success and start background upload
       showSuccess();
@@ -772,6 +774,78 @@ async function generateLocalComposite(photos, frameUrl, overlayUrl) {
       // LAYER 3: Draw overlay (if exists) - right side
       if (overlayImg) {
         ctx.drawImage(overlayImg, 2400, 0, 2400, 7200);
+      }
+      
+      // Return as data URL
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    
+    frameImg.onerror = reject;
+    frameImg.src = frameUrl;
+  });
+}
+
+// Generate single composite for local backup (2x6 inch)
+async function generateSingleComposite(photos, frameUrl, overlayUrl) {
+  return new Promise(async (resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Single composite: 2x6 inch at 600 DPI = 2400x7200
+    canvas.width = 2400;
+    canvas.height = 7200;
+    
+    const photoWidth = 2200;  // Centered with 100px margins on each side
+    const photoHeight = 1467; // 3:2 ratio
+    const sideMargin = 100;   // Center horizontally
+    const photoSpacing = 67;  // Reduced spacing between photos
+    
+    // Calculate total photos height and center vertically
+    const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
+    const topMargin = (7200 - totalPhotosHeight) / 2;  // Equal top and bottom margins
+    
+    // Load frame
+    const frameImg = new Image();
+    frameImg.crossOrigin = 'anonymous';
+    
+    // Load overlay (if exists)
+    let overlayImg = null;
+    if (overlayUrl) {
+      overlayImg = new Image();
+      overlayImg.crossOrigin = 'anonymous';
+      overlayImg.src = overlayUrl;
+      await new Promise((res) => {
+        overlayImg.onload = res;
+        overlayImg.onerror = () => res(); // Continue even if overlay fails
+      });
+    }
+    
+    frameImg.onload = async () => {
+      // Clear canvas first
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // LAYER 1: Draw frame as background
+      ctx.drawImage(frameImg, 0, 0, 2400, 7200);
+      
+      // LAYER 2: Draw photos (ALWAYS VISIBLE)
+      ctx.save();
+      for (let i = 0; i < photos.length; i++) {
+        const img = new Image();
+        img.src = photos[i];
+        
+        await new Promise((resolveImg) => {
+          img.onload = () => {
+            const y = topMargin + (i * (photoHeight + photoSpacing));
+            ctx.drawImage(img, sideMargin, y, photoWidth, photoHeight);
+            resolveImg();
+          };
+        });
+      }
+      ctx.restore();
+      
+      // LAYER 3: Draw overlay (if exists)
+      if (overlayImg) {
+        ctx.drawImage(overlayImg, 0, 0, 2400, 7200);
       }
       
       // Return as data URL
