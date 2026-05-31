@@ -64,6 +64,21 @@
 
         <div class="thumbnails" id="thumbnails"></div>
       </div>
+
+      <!-- Local Backup Controls -->
+      <div class="local-backup-controls">
+        <div class="backup-toggle">
+          <label class="toggle-switch">
+            <input type="checkbox" id="localBackupToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">บันทึกลงเครื่อง</span>
+        </div>
+        <div class="backup-folder" id="backupFolderSection" style="display: none;">
+          <button id="selectFolderBtn" class="btn-select-folder">📁 เลือก Folder</button>
+          <span id="selectedFolderPath" class="folder-path">ยังไม่ได้เลือก folder</span>
+        </div>
+      </div>
     </div>
 
     <div id="frameSelectionScreen" style="display: none;">
