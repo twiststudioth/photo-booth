@@ -39,7 +39,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
       mediaSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
-      connectSrc: ["'self'", "https://res.cloudinary.com"]
+      connectSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"]
     }
   }
 }));

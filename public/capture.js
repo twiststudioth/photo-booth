@@ -21,6 +21,14 @@ let stream = null;
 let capturedPhotos = [];
 let currentPhotoIndex = 0;
 let selectedFrameId = null;
+
+// Local backup settings
+let localBackupEnabled = localStorage.getItem('localBackupEnabled') === 'true';
+let selectedBackupFolder = localStorage.getItem('selectedBackupFolder') || '';
+
+// Try to restore directory handle from IndexedDB
+let restoringHandle = false;
+
 // DOM Elements
 const loadingScreen = document.getElementById('loadingScreen');
 const captureScreen = document.getElementById('captureScreen');
@@ -37,6 +45,149 @@ const retakeBtn = document.getElementById('retakeBtn');
 const nextBtn = document.getElementById('nextBtn');
 const thumbnails = document.getElementById('thumbnails');
 const currentPhotoSpan = document.getElementById('currentPhoto');
+
+// Local backup elements
+const localBackupToggle = document.getElementById('localBackupToggle');
+const backupFolderSection = document.getElementById('backupFolderSection');
+const selectFolderBtn = document.getElementById('selectFolderBtn');
+const selectedFolderPath = document.getElementById('selectedFolderPath');
+
+// Initialize local backup UI
+localBackupToggle.checked = localBackupEnabled;
+if (localBackupEnabled) {
+  backupFolderSection.style.display = 'flex';
+}
+if (selectedBackupFolder) {
+  selectedFolderPath.textContent = selectedBackupFolder;
+  selectedFolderPath.classList.add('selected');
+}
+
+// Restore directory handle from IndexedDB
+async function restoreDirectoryHandle() {
+  if (!('indexedDB' in window)) return;
+  
+  try {
+    const db = await openDB();
+    const tx = db.transaction('handles', 'readonly');
+    const store = tx.objectStore('handles');
+    const request = store.get('backupDir');
+    
+    return new Promise((resolve) => {
+      request.onsuccess = () => {
+        if (request.result) {
+          window.backupDirHandle = request.result.handle;
+          console.log('Restored directory handle from IndexedDB');
+        }
+        resolve();
+      };
+      request.onerror = () => resolve();
+    });
+  } catch (error) {
+    console.error('Failed to restore directory handle:', error);
+  }
+}
+
+// Save directory handle to IndexedDB
+async function saveDirectoryHandle(handle) {
+  if (!('indexedDB' in window)) return;
+  
+  try {
+    const db = await openDB();
+    const tx = db.transaction('handles', 'readwrite');
+    const store = tx.objectStore('handles');
+    store.put({ id: 'backupDir', handle: handle });
+    
+    return new Promise((resolve) => {
+      tx.oncomplete = () => {
+        console.log('Saved directory handle to IndexedDB');
+        resolve();
+      };
+      tx.onerror = () => resolve();
+    });
+  } catch (error) {
+    console.error('Failed to save directory handle:', error);
+  }
+}
+
+// Open IndexedDB
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('PhotoBoothDB', 1);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('handles')) {
+        db.createObjectStore('handles', { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+// Restore handle on page load
+if (localBackupEnabled && selectedBackupFolder) {
+  restoringHandle = true;
+  restoreDirectoryHandle().then(() => {
+    restoringHandle = false;
+    if (window.backupDirHandle) {
+      console.log('Directory handle restored successfully');
+    } else {
+      console.log('No directory handle found, user needs to select folder again');
+      selectedFolderPath.textContent = 'กรุณาเลือก folder ใหม่';
+      selectedFolderPath.classList.remove('selected');
+    }
+  });
+}
+
+// Local backup toggle handler
+localBackupToggle.addEventListener('change', (e) => {
+  localBackupEnabled = e.target.checked;
+  localStorage.setItem('localBackupEnabled', localBackupEnabled);
+  
+  if (localBackupEnabled) {
+    backupFolderSection.style.display = 'flex';
+    if (!selectedBackupFolder || !window.backupDirHandle) {
+      // Auto-prompt to select folder
+      setTimeout(() => selectFolderBtn.click(), 300);
+    }
+  } else {
+    backupFolderSection.style.display = 'none';
+  }
+});
+
+// Select folder handler
+selectFolderBtn.addEventListener('click', async () => {
+  try {
+    // Use File System Access API (Chrome/Edge)
+    if ('showDirectoryPicker' in window) {
+      const dirHandle = await window.showDirectoryPicker({
+        mode: 'readwrite'
+      });
+      
+      selectedBackupFolder = dirHandle.name;
+      selectedFolderPath.textContent = selectedBackupFolder;
+      selectedFolderPath.classList.add('selected');
+      
+      // Store directory handle
+      localStorage.setItem('selectedBackupFolder', selectedBackupFolder);
+      window.backupDirHandle = dirHandle;
+      
+      // Save to IndexedDB for persistence
+      await saveDirectoryHandle(dirHandle);
+      
+      console.log('Folder selected:', selectedBackupFolder);
+    } else {
+      alert('เบราว์เซอร์ของคุณไม่รองรับการเลือก folder โดยตรง\nกรุณาใช้ Chrome หรือ Edge เวอร์ชันล่าสุด');
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      console.error('Folder selection error:', error);
+      alert('ไม่สามารถเลือก folder ได้');
+    }
+  }
+});
 
 // Initialize
 async function init() {
@@ -508,6 +659,12 @@ document.getElementById('savePhotosBtn').addEventListener('click', async () => {
     if (frame) {
       const localComposite = await generateLocalComposite(capturedPhotos, frame.path, frame.overlayPath);
       
+      // Save to local folder if enabled
+      if (localBackupEnabled && window.backupDirHandle) {
+        const fileName = `${eventData.filePrefix}_${String(eventData.photoCounter + 1).padStart(4, '0')}`;
+        await saveToLocalFolder(localComposite, fileName);
+      }
+      
       // Print immediately
       printPhoto(localComposite);
       
@@ -677,6 +834,85 @@ async function uploadPhotosInBackground(photos, frameId) {
     statusDescription.style.display = 'none';
     statusNote.style.display = 'none';
   }
+}
+
+// Save to local folder
+async function saveToLocalFolder(compositeDataUrl, fileName) {
+  console.log('saveToLocalFolder called:', { 
+    enabled: localBackupEnabled, 
+    hasDirHandle: !!window.backupDirHandle,
+    fileName 
+  });
+  
+  if (!localBackupEnabled || !window.backupDirHandle) {
+    console.log('Local backup skipped - not enabled or no folder selected');
+    return;
+  }
+  
+  try {
+    console.log('Requesting permission...');
+    // Request permission if needed
+    const permission = await window.backupDirHandle.queryPermission({ mode: 'readwrite' });
+    console.log('Current permission:', permission);
+    
+    if (permission !== 'granted') {
+      const newPermission = await window.backupDirHandle.requestPermission({ mode: 'readwrite' });
+      console.log('New permission:', newPermission);
+      if (newPermission !== 'granted') {
+        console.error('Permission denied for local backup');
+        return;
+      }
+    }
+    
+    console.log('Converting data URL to blob...');
+    // Convert data URL to blob directly (without fetch to avoid CSP issues)
+    const base64Data = compositeDataUrl.split(',')[1];
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+    console.log('Blob created:', blob.size, 'bytes');
+    
+    // Create file in selected folder
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const fullFileName = `${fileName}_${timestamp}.jpg`;
+    console.log('Creating file:', fullFileName);
+    
+    const fileHandle = await window.backupDirHandle.getFileHandle(fullFileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    
+    console.log(`✅ Saved to local folder: ${fullFileName}`);
+    
+    // Show success notification to user
+    showToast(`บันทึกลงเครื่องสำเร็จ: ${fullFileName}`);
+  } catch (error) {
+    console.error('❌ Local backup error:', error);
+    // Show error to user
+    showToast('ไม่สามารถบันทึกลงเครื่องได้: ' + error.message, 'error');
+  }
+}
+
+// Show toast notification
+function showToast(message, type = 'success') {
+  const toast = document.createElement('div');
+  toast.className = 'toast show';
+  toast.textContent = message;
+  
+  if (type === 'error') {
+    toast.style.background = '#ef4444';
+  }
+  
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // Show success
