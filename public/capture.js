@@ -226,11 +226,12 @@ async function init() {
 // Initialize camera
 async function initCamera() {
   try {
-    // Get last facing mode preference
+    // Get last selected camera and facing mode preference
+    const lastSelectedCamera = localStorage.getItem('selectedCamera');
     const lastFacingMode = localStorage.getItem('facingMode') || 'environment';
     
-    // Start camera with facing mode (works better on mobile)
-    await startCamera(null, lastFacingMode);
+    // Start camera with last selected camera or facing mode (works better on mobile)
+    await startCamera(lastSelectedCamera, lastFacingMode);
     
     // Get available cameras after starting
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -244,6 +245,11 @@ async function initCamera() {
       option.text = device.label || `กล้อง ${index + 1}`;
       cameraSelect.appendChild(option);
     });
+    
+    // Set the selected camera in dropdown if we have one saved
+    if (lastSelectedCamera) {
+      cameraSelect.value = lastSelectedCamera;
+    }
     
     // Detect if mobile device
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
