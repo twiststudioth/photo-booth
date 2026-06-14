@@ -15,6 +15,7 @@ const photoViewerModal = document.getElementById('photoViewerModal');
 const currentPhoto = document.getElementById('currentPhoto');
 const photoIndex = document.getElementById('photoIndex');
 const deleteSetBtn = document.getElementById('deleteSetBtn');
+const printPhotoBtn = document.getElementById('printPhotoBtn');
 const photoLoading = document.getElementById('photoLoading');
 
 // Check if admin
@@ -23,6 +24,7 @@ isAdmin = !!authToken;
 
 if (isAdmin) {
   deleteSetBtn.style.display = 'inline-flex';
+  printPhotoBtn.style.display = 'inline-flex';
 }
 
 // Initialize
@@ -349,17 +351,19 @@ document.getElementById('downloadCurrentBtn').addEventListener('click', async ()
   const photos = getPhotoArray();
   const currentPhotoData = photos[currentPhotoIndex];
   
+  const downloadBtn = document.getElementById('downloadCurrentBtn');
+  
   // ถ้าเป็นรูปที่ 5 (slideshow) ให้ดาวน์โหลดเป็น GIF
   if (currentPhotoData === 'slideshow') {
     await downloadGIF();
   } else if (currentPhotoIndex === 0 && currentPhotoSet.composite) {
     // Download composite
     const fullQualityUrl = optimizeCloudinaryUrl(currentPhotoData, 'full');
-    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_composite`);
+    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_composite`, downloadBtn);
   } else {
     // Download individual photo
     const fullQualityUrl = optimizeCloudinaryUrl(currentPhotoData, 'full');
-    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_${currentPhotoIndex}`);
+    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_${currentPhotoIndex}`, downloadBtn);
   }
 });
 
@@ -421,8 +425,16 @@ function isMobile() {
 }
 
 // Download photo helper - optimized for mobile
-async function downloadPhoto(url, filename) {
+async function downloadPhoto(url, filename, buttonElement = null) {
+  const originalText = buttonElement ? buttonElement.textContent : null;
+  
   try {
+    // แสดง loading state
+    if (buttonElement) {
+      buttonElement.disabled = true;
+      buttonElement.textContent = 'กำลังเตรียมรูป...';
+    }
+    
     const response = await fetch(url);
     const blob = await response.blob();
     
@@ -472,8 +484,143 @@ async function downloadPhoto(url, filename) {
   } catch (error) {
     console.error('Download failed:', error);
     alert('ดาวน์โหลดไม่สำเร็จ กรุณาลองอีกครั้ง');
+  } finally {
+    // คืนค่าปุ่มกลับเป็นปกติ
+    if (buttonElement && originalText) {
+      buttonElement.disabled = false;
+      buttonElement.textContent = originalText;
+    }
   }
 }
+
+// Print photo (admin only) - จัดเรียง 2 ชุดรูป composite ต่อกันในกระดาษ 4x6 นิ้ว
+printPhotoBtn.addEventListener('click', async () => {
+  if (!currentPhotoSet || !currentPhotoSet.composite) {
+    alert('ไม่พบรูป composite สำหรับปริ้น');
+    return;
+  }
+  
+  try {
+    const originalText = printPhotoBtn.textContent;
+    printPhotoBtn.disabled = true;
+    printPhotoBtn.textContent = 'กำลังเตรียมรูป...';
+    
+    console.log('Requesting print file for photo set:', currentPhotoSet.id);
+    
+    // Request print file from server (2 composites arranged for 4x6" paper)
+    const response = await fetch(`/api/photos/${currentPhotoSet.id}/print`, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    });
+    
+    console.log('Print response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Print response error:', errorText);
+      throw new Error(`Failed to generate print file: ${response.status}`);
+    }
+    
+    const blob = await response.blob();
+    console.log('Received blob size:', blob.size, 'bytes');
+    
+    // สร้าง URL จาก blob
+    const blobUrl = URL.createObjectURL(blob);
+    
+    // สร้าง iframe ซ่อนไว้สำหรับปริ้น
+    const printFrame = document.createElement('iframe');
+    printFrame.style.display = 'none';
+    printFrame.onload = function() {
+      try {
+        // เขียน HTML สำหรับปริ้นลงใน iframe
+        let frameDoc = printFrame.contentWindow || printFrame.contentDocument;
+        if (frameDoc.document) frameDoc = frameDoc.document;
+        
+        frameDoc.open();
+        frameDoc.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Print - ${currentPhotoSet.fileName}</title>
+            <style>
+              * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+              }
+              body {
+                margin: 0;
+                padding: 0;
+              }
+              img {
+                display: block;
+                width: 100%;
+                height: auto;
+              }
+              @media print {
+                @page {
+                  size: 4in 6in;
+                  margin: 0;
+                }
+                body {
+                  margin: 0;
+                  padding: 0;
+                }
+                img {
+                  width: 100%;
+                  height: 100%;
+                  object-fit: contain;
+                  page-break-inside: avoid;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <img src="${blobUrl}" alt="Print">
+          </body>
+          </html>
+        `);
+        frameDoc.close();
+        
+        // รอให้รูปโหลดเสร็จแล้วเปิด print dialog
+        setTimeout(() => {
+          try {
+            printFrame.contentWindow.focus();
+            printFrame.contentWindow.print();
+            
+            // ลบ iframe และ blob URL หลังจากปริ้นเสร็จ
+            setTimeout(() => {
+              document.body.removeChild(printFrame);
+              URL.revokeObjectURL(blobUrl);
+            }, 1000);
+          } catch (e) {
+            console.error('Print error:', e);
+            document.body.removeChild(printFrame);
+            URL.revokeObjectURL(blobUrl);
+          }
+        }, 500);
+      } catch (e) {
+        console.error('Frame load error:', e);
+        document.body.removeChild(printFrame);
+        URL.revokeObjectURL(blobUrl);
+      }
+    };
+    
+    document.body.appendChild(printFrame);
+    
+    console.log('Print dialog preparing...');
+    
+    printPhotoBtn.disabled = false;
+    printPhotoBtn.textContent = originalText;
+  } catch (error) {
+    console.error('Print file generation failed:', error);
+    alert(`สร้างไฟล์ปริ้นไม่สำเร็จ: ${error.message}`);
+    
+    printPhotoBtn.disabled = false;
+    printPhotoBtn.textContent = 'ปริ้นรูปนี้';
+  }
+});
 
 // Delete photo set (admin only)
 deleteSetBtn.addEventListener('click', async () => {

@@ -79,6 +79,17 @@ body {
   background: #dc2626;
 }
 
+.btn-success {
+  background: var(--success-color);
+  color: white;
+}
+
+.btn-success:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
 .btn-large {
   padding: 16px 32px;
   font-size: 18px;
