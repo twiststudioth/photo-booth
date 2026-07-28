@@ -25,26 +25,108 @@
       </header>
 
       <div class="capture-content">
-        <div class="camera-container">
-          <video id="video" autoplay playsinline></video>
-          <canvas id="canvas" style="display: none;"></canvas>
-          
-          <div id="countdown" class="countdown" style="display: none;">
-            <div class="countdown-number">3</div>
+        <div class="capture-layout">
+          <div class="capture-left">
+            <div class="camera-container">
+              <video id="video" autoplay playsinline></video>
+              <canvas id="canvas" style="display: none;"></canvas>
+              
+              <div id="countdown" class="countdown" style="display: none;">
+                <div class="countdown-number">3</div>
+              </div>
+              
+              <div id="cameraControls" class="camera-controls">
+                <select id="cameraSelect" class="camera-select">
+                  <option value="">เลือกกล้อง...</option>
+                </select>
+                <button id="flipCameraBtn" class="btn-flip-camera" title="สลับกล้อง" style="display: none;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 1l4 4-4 4"/>
+                    <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                    <path d="M7 23l-4-4 4-4"/>
+                    <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
-          
-          <div id="cameraControls" class="camera-controls">
-            <select id="cameraSelect" class="camera-select">
-              <option value="">เลือกกล้อง...</option>
-            </select>
-            <button id="flipCameraBtn" class="btn-flip-camera" title="สลับกล้อง" style="display: none;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 1l4 4-4 4"/>
-                <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-                <path d="M7 23l-4-4 4-4"/>
-                <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-              </svg>
-            </button>
+
+        </div>
+
+        <!-- Floating Toggle Button -->
+        <button id="toggleAdjustmentBtn" class="btn-floating-adjustment">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/>
+          </svg>
+        </button>
+
+        <!-- Overlay Adjustment Panel -->
+        <div class="adjustment-overlay" id="adjustmentOverlay">
+          <div class="adjustment-panel-floating">
+            <div class="adjustment-header">
+              <h3>ปรับแต่งภาพ</h3>
+              <button id="resetAdjustmentsBtn" class="btn-reset" title="รีเซ็ต">↻</button>
+            </div>
+
+            <!-- Filters -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">ฟิลเตอร์</label>
+              <div class="filter-buttons">
+                <button class="filter-btn active" data-filter="none">ปกติ</button>
+                <button class="filter-btn" data-filter="bw">ขาวดำ</button>
+                <button class="filter-btn" data-filter="sepia">เซเปีย</button>
+                <button class="filter-btn" data-filter="vintage">วินเทจ</button>
+                <button class="filter-btn" data-filter="cool">เย็น</button>
+                <button class="filter-btn" data-filter="warm">อบอุ่น</button>
+                <button class="filter-btn" data-filter="brighten">ผิวขาว</button>
+              </div>
+            </div>
+
+            <!-- Brightness -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">
+                ความสว่าง
+                <span id="brightnessValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="brightnessSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+            </div>
+
+            <!-- Contrast -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">
+                คอนทราสต์
+                <span id="contrastValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="contrastSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+            </div>
+
+            <!-- Shadows -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">
+                เงา
+                <span id="shadowValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="shadowSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+            </div>
+
+            <!-- Saturation -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">
+                ความอิ่มตัวสี
+                <span id="saturationValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="saturationSlider" class="adjustment-slider" min="-100" max="100" value="0" step="1">
+            </div>
+
+            <!-- Sharpness -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">
+                ความคมชัด
+                <span id="sharpnessValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="sharpnessSlider" class="adjustment-slider" min="-100" max="100" value="0" step="1">
+            </div>
           </div>
         </div>
 

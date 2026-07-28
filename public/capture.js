@@ -22,6 +22,16 @@ let capturedPhotos = [];
 let currentPhotoIndex = 0;
 let selectedFrameId = null;
 
+// Image adjustment settings
+let imageAdjustments = {
+  brightness: 0,
+  contrast: 0,
+  saturation: 0,
+  shadows: 0,
+  sharpness: 0, // -100 to 100
+  filter: 'none'
+};
+
 // Local backup settings
 let localBackupEnabled = localStorage.getItem('localBackupEnabled') === 'true';
 let selectedBackupFolder = localStorage.getItem('selectedBackupFolder') || '';
@@ -269,10 +279,398 @@ async function initCamera() {
     if (isMobile) {
       cameraSelect.style.display = 'none';
     }
+    
+    // Initialize image adjustment controls
+    initImageAdjustments();
   } catch (error) {
     console.error('Camera initialization error:', error);
     alert('ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้อง');
   }
+}
+
+// Initialize image adjustment controls
+function initImageAdjustments() {
+  const toggleBtn = document.getElementById('toggleAdjustmentBtn');
+  const adjustmentOverlay = document.getElementById('adjustmentOverlay');
+  const brightnessSlider = document.getElementById('brightnessSlider');
+  const contrastSlider = document.getElementById('contrastSlider');
+  const saturationSlider = document.getElementById('saturationSlider');
+  const shadowSlider = document.getElementById('shadowSlider');
+  const sharpnessSlider = document.getElementById('sharpnessSlider');
+  const filterButtons = document.querySelectorAll('.filter-btn');
+  const resetBtn = document.getElementById('resetAdjustmentsBtn');
+  
+  // Toggle overlay visibility
+  toggleBtn.addEventListener('click', () => {
+    const isVisible = adjustmentOverlay.classList.contains('show');
+    
+    console.log('Toggle clicked, isVisible:', isVisible);
+    
+    if (isVisible) {
+      // Hide overlay
+      adjustmentOverlay.classList.remove('show');
+      toggleBtn.classList.remove('active');
+      console.log('Hiding panel');
+    } else {
+      // Show overlay
+      adjustmentOverlay.classList.add('show');
+      toggleBtn.classList.add('active');
+      console.log('Showing panel');
+    }
+  });
+  
+  // Brightness slider
+  brightnessSlider.addEventListener('input', (e) => {
+    imageAdjustments.brightness = parseInt(e.target.value);
+    document.getElementById('brightnessValue').textContent = e.target.value;
+    applyImageAdjustments();
+  });
+  
+  // Contrast slider
+  contrastSlider.addEventListener('input', (e) => {
+    imageAdjustments.contrast = parseInt(e.target.value);
+    document.getElementById('contrastValue').textContent = e.target.value;
+    applyImageAdjustments();
+  });
+  
+  // Shadow slider
+  if (shadowSlider) {
+    shadowSlider.addEventListener('input', (e) => {
+      imageAdjustments.shadows = parseInt(e.target.value);
+      document.getElementById('shadowValue').textContent = e.target.value;
+      applyImageAdjustments();
+    });
+  }
+  
+  // Saturation slider
+  saturationSlider.addEventListener('input', (e) => {
+    imageAdjustments.saturation = parseInt(e.target.value);
+    document.getElementById('saturationValue').textContent = e.target.value;
+    applyImageAdjustments();
+  });
+  
+  // Sharpness slider
+  if (sharpnessSlider) {
+    sharpnessSlider.addEventListener('input', (e) => {
+      imageAdjustments.sharpness = parseInt(e.target.value);
+      document.getElementById('sharpnessValue').textContent = e.target.value;
+      applyImageAdjustments();
+    });
+  }
+  
+  // Filter buttons
+  filterButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      imageAdjustments.filter = btn.dataset.filter;
+      applyImageAdjustments();
+    });
+  });
+  
+  // Reset button
+  resetBtn.addEventListener('click', () => {
+    imageAdjustments = {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      shadows: 0,
+      sharpness: 0,
+      filter: 'none'
+    };
+    
+    brightnessSlider.value = 0;
+    contrastSlider.value = 0;
+    saturationSlider.value = 0;
+    if (shadowSlider) shadowSlider.value = 0;
+    if (sharpnessSlider) sharpnessSlider.value = 0;
+    document.getElementById('brightnessValue').textContent = '0';
+    document.getElementById('contrastValue').textContent = '0';
+    document.getElementById('saturationValue').textContent = '0';
+    if (document.getElementById('shadowValue')) document.getElementById('shadowValue').textContent = '0';
+    if (document.getElementById('sharpnessValue')) document.getElementById('sharpnessValue').textContent = '0';
+    
+    filterButtons.forEach(b => b.classList.remove('active'));
+    document.querySelector('[data-filter="none"]').classList.add('active');
+    
+    applyImageAdjustments();
+  });
+}
+
+// ===== SHARPNESS HELPERS =====
+
+// Build a 3x3 kernel for a given sharpness value (-100 to 100).
+// Positive values sharpen (unsharp-mask style), negative values soften (box blur).
+function buildSharpnessKernel(sharpness) {
+  const strength = sharpness / 100; // -1 to 1
+
+  if (strength > 0) {
+    const s = strength;
+    return [
+      0, -s, 0,
+      -s, 1 + 4 * s, -s,
+      0, -s, 0
+    ];
+  }
+
+  if (strength < 0) {
+    const b = -strength; // 0 to 1
+    const edge = b / 4;
+    const center = 1 - b;
+    return [
+      0, edge, 0,
+      edge, center, edge,
+      0, edge, 0
+    ];
+  }
+
+  return [0, 0, 0, 0, 1, 0, 0, 0, 0];
+}
+
+// Lazily create (once) a hidden SVG <filter> with feConvolveMatrix so the
+// live <video> preview can show sharpen/blur via CSS filter: url(#...)
+// (CSS filter() has no native sharpen function, so we synthesize one).
+function ensureSharpenPreviewFilter() {
+  if (document.getElementById('sharpenPreviewSVG')) return;
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('id', 'sharpenPreviewSVG');
+  svg.setAttribute('width', '0');
+  svg.setAttribute('height', '0');
+  svg.style.position = 'absolute';
+  svg.style.pointerEvents = 'none';
+
+  const filter = document.createElementNS(svgNS, 'filter');
+  filter.setAttribute('id', 'sharpenPreviewFilterEl');
+  // IMPORTANT: without this the browser convolves in linearRGB by default,
+  // which gives wildly different (usually near-invisible) results compared
+  // to the sRGB pixel math applyCanvasAdjustments() does on capture — that
+  // mismatch is exactly why the live preview looked like it had no effect.
+  filter.setAttribute('color-interpolation-filters', 'sRGB');
+
+  const feConvolveMatrix = document.createElementNS(svgNS, 'feConvolveMatrix');
+  feConvolveMatrix.setAttribute('id', 'sharpenPreviewConvolve');
+  feConvolveMatrix.setAttribute('order', '3');
+  feConvolveMatrix.setAttribute('preserveAlpha', 'true');
+  feConvolveMatrix.setAttribute('color-interpolation-filters', 'sRGB');
+  feConvolveMatrix.setAttribute('kernelMatrix', '0 0 0 0 1 0 0 0 0');
+
+  filter.appendChild(feConvolveMatrix);
+  svg.appendChild(filter);
+  document.body.appendChild(svg);
+}
+
+function updateSharpenPreviewFilter(sharpness) {
+  ensureSharpenPreviewFilter();
+  const feConvolveMatrix = document.getElementById('sharpenPreviewConvolve');
+  const kernel = buildSharpnessKernel(sharpness);
+  feConvolveMatrix.setAttribute('kernelMatrix', kernel.join(' '));
+}
+
+// Apply the same kernel permanently to captured pixel data (RGBA Uint8ClampedArray).
+// Returns a new Uint8ClampedArray; alpha channel is passed through unchanged.
+function applySharpnessConvolution(data, width, height, sharpness) {
+  if (!sharpness) return data;
+
+  const kernel = buildSharpnessKernel(sharpness);
+  const output = new Uint8ClampedArray(data.length);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0, g = 0, b = 0;
+      let k = 0;
+
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const px = Math.min(width - 1, Math.max(0, x + kx));
+          const py = Math.min(height - 1, Math.max(0, y + ky));
+          const idx = (py * width + px) * 4;
+          const kval = kernel[k++];
+
+          r += data[idx] * kval;
+          g += data[idx + 1] * kval;
+          b += data[idx + 2] * kval;
+        }
+      }
+
+      const outIdx = (y * width + x) * 4;
+      output[outIdx] = r;
+      output[outIdx + 1] = g;
+      output[outIdx + 2] = b;
+      output[outIdx + 3] = data[outIdx + 3];
+    }
+  }
+
+  return output;
+}
+
+// Apply image adjustments to video
+function applyImageAdjustments() {
+  const filters = [];
+  
+  // Brightness: -50 to 50 -> 0.5 to 1.5
+  const brightness = 1 + (imageAdjustments.brightness / 100);
+  filters.push(`brightness(${brightness})`);
+  
+  // Contrast: -50 to 50 -> 0.5 to 1.5
+  const contrast = 1 + (imageAdjustments.contrast / 100);
+  filters.push(`contrast(${contrast})`);
+  
+  // Saturation: -100 to 100 -> 0 to 2
+  const saturation = 1 + (imageAdjustments.saturation / 100);
+  filters.push(`saturate(${saturation})`);
+  
+  // Sharpness: -100 to 100 -> synthesized via SVG feConvolveMatrix
+  // (CSS has no native sharpen filter, so we build one on the fly)
+  if (imageAdjustments.sharpness) {
+    updateSharpenPreviewFilter(imageAdjustments.sharpness);
+    filters.push('url(#sharpenPreviewFilterEl)');
+  }
+  
+  // Apply filter preset
+  switch (imageAdjustments.filter) {
+    case 'bw':
+      filters.push('grayscale(100%)');
+      break;
+    case 'sepia':
+      filters.push('sepia(100%)');
+      break;
+    case 'vintage':
+      filters.push('sepia(50%) contrast(0.9) brightness(0.9)');
+      break;
+    case 'cool':
+      filters.push('hue-rotate(180deg) saturate(1.2)');
+      break;
+    case 'warm':
+      filters.push('sepia(30%) saturate(1.3)');
+      break;
+    case 'brighten':
+      filters.push('brightness(1.3) contrast(1.1) saturate(0.9)');
+      break;
+  }
+  
+  video.style.filter = filters.join(' ');
+}
+
+// Apply image adjustments to canvas (permanent)
+function applyCanvasAdjustments(ctx, width, height) {
+  // Get image data
+  const imageData = ctx.getImageData(0, 0, width, height);
+  let data = imageData.data;
+  
+  // Apply sharpness/softness first (needs original neighbor pixels,
+  // so it must run before the per-pixel color loop below rewrites them).
+  if (imageAdjustments.sharpness) {
+    const sharpened = applySharpnessConvolution(data, width, height, imageAdjustments.sharpness);
+    data.set(sharpened);
+  }
+  
+  // Calculate adjustment factors
+  const brightnessFactor = 1 + (imageAdjustments.brightness / 100);
+  const contrastFactor = 1 + (imageAdjustments.contrast / 100);
+  const saturationFactor = 1 + (imageAdjustments.saturation / 100);
+  const shadowAdjustment = imageAdjustments.shadows / 100; // -0.5 to 0.5
+  
+  // Apply adjustments pixel by pixel
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i + 1];
+    let b = data[i + 2];
+    
+    // Apply filter presets first
+    if (imageAdjustments.filter === 'bw') {
+      // Grayscale
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = g = b = gray;
+    } else if (imageAdjustments.filter === 'sepia') {
+      // Sepia
+      const tr = 0.393 * r + 0.769 * g + 0.189 * b;
+      const tg = 0.349 * r + 0.686 * g + 0.168 * b;
+      const tb = 0.272 * r + 0.534 * g + 0.131 * b;
+      r = tr;
+      g = tg;
+      b = tb;
+    } else if (imageAdjustments.filter === 'vintage') {
+      // Vintage (sepia + reduced contrast/brightness)
+      const tr = 0.393 * r + 0.769 * g + 0.189 * b;
+      const tg = 0.349 * r + 0.686 * g + 0.168 * b;
+      const tb = 0.272 * r + 0.534 * g + 0.131 * b;
+      r = tr * 0.5 + r * 0.5;
+      g = tg * 0.5 + g * 0.5;
+      b = tb * 0.5 + b * 0.5;
+      r *= 0.9;
+      g *= 0.9;
+      b *= 0.9;
+    } else if (imageAdjustments.filter === 'warm') {
+      // Warm (sepia tint + saturation boost)
+      const tr = 0.393 * r + 0.769 * g + 0.189 * b;
+      const tg = 0.349 * r + 0.686 * g + 0.168 * b;
+      const tb = 0.272 * r + 0.534 * g + 0.131 * b;
+      r = tr * 0.3 + r * 0.7;
+      g = tg * 0.3 + g * 0.7;
+      b = tb * 0.3 + b * 0.7;
+    } else if (imageAdjustments.filter === 'brighten') {
+      // ฟิลเตอร์สำหรับผิวคล้ำให้ดูขาวขึ้น
+      r *= 1.3;
+      g *= 1.3;
+      b *= 1.3;
+      r = ((r / 255 - 0.5) * 1.1 + 0.5) * 255;
+      g = ((g / 255 - 0.5) * 1.1 + 0.5) * 255;
+      b = ((b / 255 - 0.5) * 1.1 + 0.5) * 255;
+      const grayB = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = grayB + (r - grayB) * 0.9;
+      g = grayB + (g - grayB) * 0.9;
+      b = grayB + (b - grayB) * 0.9;
+    }
+    
+    // Apply shadows (improved algorithm - แบ่งเป็น 3 โซน)
+    if (shadowAdjustment !== 0) {
+      const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+      
+      if (luminance < 85) {
+        // Shadows - มีผลเต็มที่
+        const factor = 1 + (shadowAdjustment * 1.5);
+        r *= factor;
+        g *= factor;
+        b *= factor;
+      } else if (luminance < 170) {
+        // Midtones - มีผลปานกลาง
+        const midtoneInfluence = (170 - luminance) / 85;
+        const factor = 1 + (shadowAdjustment * 0.8 * midtoneInfluence);
+        r *= factor;
+        g *= factor;
+        b *= factor;
+      }
+      // Highlights - ไม่มีผล
+    }
+    
+    // Apply brightness
+    r *= brightnessFactor;
+    g *= brightnessFactor;
+    b *= brightnessFactor;
+    
+    // Apply contrast
+    r = ((r / 255 - 0.5) * contrastFactor + 0.5) * 255;
+    g = ((g / 255 - 0.5) * contrastFactor + 0.5) * 255;
+    b = ((b / 255 - 0.5) * contrastFactor + 0.5) * 255;
+    
+    // Apply saturation
+    if (saturationFactor !== 1) {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = gray + (r - gray) * saturationFactor;
+      g = gray + (g - gray) * saturationFactor;
+      b = gray + (b - gray) * saturationFactor;
+    }
+    
+    // Clamp values
+    data[i] = Math.max(0, Math.min(255, r));
+    data[i + 1] = Math.max(0, Math.min(255, g));
+    data[i + 2] = Math.max(0, Math.min(255, b));
+  }
+  
+  // Put modified image data back
+  ctx.putImageData(imageData, 0, 0);
 }
 
 // Start camera
@@ -402,6 +800,9 @@ captureBtn.addEventListener('click', async () => {
     sourceX, sourceY, sourceWidth, sourceHeight,
     0, 0, targetWidth, targetHeight
   );
+  
+  // Apply image adjustments to canvas
+  applyCanvasAdjustments(context, targetWidth, targetHeight);
   
   // Play shutter sound
   playBeep(1000, 100);
