@@ -67,6 +67,12 @@
           <label>โฟลเดอร์สำหรับอัพโหลด</label>
           <input type="text" id="uploadFolder" placeholder="default">
         </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="cardEnabled"> มีการ์ดอวยพร
+          </label>
+          <small>ปริ้นการ์ดอวยพร (รูป 1 ภาพ) แยกจากรูป 1 ชุด</small>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary cancel-btn">ยกเลิก</button>
           <button type="submit" class="btn btn-primary">สร้างอีเว้นท์</button>
@@ -113,6 +119,7 @@
           <h3>กรอบรูป</h3>
           <div class="frame-upload">
             <input type="file" id="frameUpload" accept="image/*" style="display: none;">
+            <input type="file" id="cardUpload" accept="image/*" style="display: none;">
             <button id="uploadFrameBtn" class="btn btn-primary">+ อัพโหลดกรอบ</button>
             <button id="createFrameBtn" class="btn btn-primary">🎨 สร้างกรอบใหม่</button>
           </div>
@@ -144,7 +151,7 @@
           <div class="tool-section">
             <h4>📸 แสดงพื้นที่รูป</h4>
             <label>
-              <input type="checkbox" id="showPhotoAreas" checked> แสดงตำแหน่งรูป 3 แอค
+              <input type="checkbox" id="showPhotoAreas" checked> <span id="showPhotoAreasLabel">แสดงตำแหน่งรูป 3 แอค</span>
             </label>
             <p class="tool-info" style="margin-top: 8px; font-size: 12px;">พื้นที่สีชมพูคือตำแหน่งที่รูปจะปรากฏ (600x400px แต่ละแอค)</p>
           </div>

@@ -21,6 +21,7 @@ let stream = null;
 let capturedPhotos = [];
 let currentPhotoIndex = 0;
 let selectedFrameId = null;
+let cardPhotoIndex = 0; // รูปที่แสดงบนการ์ดอวยพร (default รูปที่ 1)
 
 // Image adjustment settings
 let imageAdjustments = {
@@ -901,7 +902,7 @@ function showFrameSelection() {
   // Load frames with previews
   const framesGrid = document.getElementById('framesGridWithPreview');
   framesGrid.innerHTML = '';
-  
+
   if (!eventData.frames || eventData.frames.length === 0) {
     framesGrid.innerHTML = '<p style="text-align: center; color: var(--text-secondary); grid-column: 1/-1;">ไม่มีกรอบให้เลือก</p>';
     return;
@@ -924,7 +925,15 @@ function showFrameSelection() {
     
     card.appendChild(canvas);
     card.appendChild(label);
-    
+
+    // Warn on frames that have no card frame (card will print on white)
+    if (eventData.cardEnabled && !frame.cardPath) {
+      const badge = document.createElement('span');
+      badge.className = 'no-card-badge';
+      badge.textContent = 'ไม่มีกรอบการ์ด';
+      card.appendChild(badge);
+    }
+
     card.addEventListener('click', () => selectFrameCard(frame.id, card));
     
     framesGrid.appendChild(card);
@@ -940,79 +949,165 @@ function showFrameSelection() {
   }
 }
 
-// Generate frame preview
+// Generate frame preview (scaled-down strip)
 async function generateFramePreview(frame, canvas) {
-  const ctx = canvas.getContext('2d');
-  
-  // Load frame image from Cloudinary
-  const frameImg = new Image();
-  frameImg.crossOrigin = 'anonymous';
-  frameImg.src = frame.path;
-  
-  await new Promise((resolve, reject) => {
-    frameImg.onload = resolve;
-    frameImg.onerror = reject;
-  });
-  
-  // Load overlay image (if exists)
-  let overlayImg = null;
-  if (frame.overlayPath) {
-    overlayImg = new Image();
-    overlayImg.crossOrigin = 'anonymous';
-    overlayImg.src = frame.overlayPath;
-    
-    await new Promise((resolve) => {
-      overlayImg.onload = resolve;
-      overlayImg.onerror = () => resolve(); // Continue even if overlay fails
-    });
-  }
-  
-  // Photo dimensions scaled down 8x
-  const photoWidth = 275;  // 2200 / 8
-  const photoHeight = 183; // 1467 / 8 (rounded)
-  const sideMargin = 13;   // 100 / 8 (rounded, centered)
-  const photoSpacing = 8;  // 67 / 8 (rounded)
-  
-  // Calculate total photos height and center vertically
-  const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
-  const topMargin = (900 - totalPhotosHeight) / 2;  // Equal top and bottom margins
-  
-  // Clear canvas first
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // LAYER 1: Draw frame as background
-  ctx.drawImage(frameImg, 0, 0, 300, 900);
-  
-  // LAYER 2: Draw photos (ALWAYS VISIBLE)
-  ctx.save();
-  for (let i = 0; i < capturedPhotos.length; i++) {
-    const img = new Image();
-    img.src = capturedPhotos[i];
-    
-    await new Promise((resolve) => {
-      img.onload = resolve;
-    });
-    
-    const y = topMargin + (i * (photoHeight + photoSpacing));
-    ctx.drawImage(img, sideMargin, y, photoWidth, photoHeight);
-  }
-  ctx.restore();
-  
-  // LAYER 3: Draw overlay on top (if exists)
-  if (overlayImg) {
-    ctx.drawImage(overlayImg, 0, 0, 300, 900);
+  try {
+    const images = await loadCompositeImages(stripSpec(frame, capturedPhotos));
+    paintComposite(canvas.getContext('2d'), canvas.width, canvas.height, images);
+  } catch (error) {
+    console.error('Frame preview error:', error);
   }
 }
 
 // Select frame card
 function selectFrameCard(frameId, card) {
   selectedFrameId = frameId;
-  
+
   // Update UI
   document.querySelectorAll('.frame-preview-card').forEach(el => {
     el.classList.remove('selected');
   });
   card.classList.add('selected');
+}
+
+// ===== PRINT MODAL (card + quantity) =====
+const printModal = document.getElementById('printModal');
+const printCountInput = document.getElementById('printCountInput');
+const confirmPrintBtn = document.getElementById('confirmPrintBtn');
+let printModalMode = 'initial'; // 'initial' = first print (then upload), 'reprint' = print again only
+let cardPreviewToken = 0;
+
+// Rendered composites of the current session, reused for reprints
+let renderedStrip = null;
+let renderedCards = {};
+
+// Build card photo picker (one button per captured photo)
+function renderCardPhotoPicker() {
+  const picker = document.getElementById('cardPhotoPicker');
+  picker.innerHTML = '';
+
+  capturedPhotos.forEach((photo, index) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'card-photo-option';
+    option.classList.toggle('selected', index === cardPhotoIndex);
+    option.innerHTML = `<img src="${photo}" alt="รูปที่ ${index + 1}"><span>รูปที่ ${index + 1}</span>`;
+    option.addEventListener('click', () => selectCardPhoto(index));
+    picker.appendChild(option);
+  });
+}
+
+function selectCardPhoto(index) {
+  if (index < 0 || index >= capturedPhotos.length) return;
+  cardPhotoIndex = index;
+  document.querySelectorAll('#cardPhotoPicker .card-photo-option').forEach((el, i) => {
+    el.classList.toggle('selected', i === index);
+  });
+  renderCardPreview();
+}
+
+// Draw card preview for the selected frame set + selected photo
+async function renderCardPreview() {
+  const frame = eventData.frames.find(f => f.id === selectedFrameId);
+  const token = ++cardPreviewToken;
+  document.getElementById('noCardFrameNotice').style.display = frame && !frame.cardPath ? 'block' : 'none';
+
+  try {
+    const images = await loadCompositeImages(cardSpec(frame, capturedPhotos[cardPhotoIndex]));
+    // Skip stale renders when the selection changed while loading
+    if (token !== cardPreviewToken) return;
+    const canvas = document.getElementById('cardPreviewCanvas');
+    paintComposite(canvas.getContext('2d'), canvas.width, canvas.height, images);
+  } catch (error) {
+    console.error('Card preview error:', error);
+  }
+}
+
+function getPrintCount() {
+  const count = parseInt(printCountInput.value, 10);
+  return Number.isInteger(count) && count >= 1 ? count : 1;
+}
+
+// First print: fixed by event config. Reprint: admin picks what to print (card events only)
+function getPrintMode() {
+  if (!eventData.cardEnabled) return 'strip';
+  if (printModalMode === 'initial') return 'both';
+  return document.querySelector('input[name="printType"]:checked').value;
+}
+
+function isCardSectionVisible() {
+  return getPrintMode() !== 'strip';
+}
+
+// Sync modal sections, labels and summary with the current mode/count
+function updatePrintOptions() {
+  const mode = getPrintMode();
+  const showCard = isCardSectionVisible();
+
+  document.getElementById('cardOptions').style.display = showCard ? 'block' : 'none';
+  document.getElementById('cardKeyHint').style.display = showCard ? 'inline' : 'none';
+  document.getElementById('printCountLabel').textContent =
+    mode === 'card' ? 'จำนวน "การ์ดอวยพร"' : 'จำนวน "รูป 1 ชุด"';
+  document.getElementById('printSummary').textContent = describeSheets(computeSheets(mode, getPrintCount()));
+
+  if (showCard) {
+    renderCardPreview();
+  }
+}
+
+function changePrintCount(delta) {
+  printCountInput.value = Math.max(1, getPrintCount() + delta);
+  updatePrintOptions();
+}
+
+printCountInput.addEventListener('input', updatePrintOptions);
+printCountInput.addEventListener('change', () => {
+  printCountInput.value = getPrintCount();
+  updatePrintOptions();
+});
+
+document.getElementById('printCountMinus').addEventListener('click', () => changePrintCount(-1));
+document.getElementById('printCountPlus').addEventListener('click', () => changePrintCount(1));
+
+document.querySelectorAll('input[name="printType"]').forEach(radio => {
+  radio.addEventListener('change', updatePrintOptions);
+});
+
+// Open print modal ('initial' after frame selection, 'reprint' from success screen)
+function openPrintModal(mode) {
+  printModalMode = mode;
+  const isReprint = mode === 'reprint';
+
+  document.getElementById('printModalTitle').textContent = isReprint ? 'ปริ้นเพิ่ม / แก้จำนวน' : 'ตั้งค่าการปริ้น';
+  document.getElementById('printBackBtn').innerHTML = isReprint
+    ? 'ปิด <kbd>Esc</kbd>'
+    : '← กลับไปเลือกกรอบ <kbd>Esc</kbd>';
+  document.getElementById('printTypeSection').style.display = isReprint && eventData.cardEnabled ? 'block' : 'none';
+  document.querySelector('input[name="printType"][value="both"]').checked = true;
+  printCountInput.value = 1;
+
+  if (eventData.cardEnabled) {
+    renderCardPhotoPicker();
+  }
+  updatePrintOptions();
+
+  printModal.classList.add('active');
+}
+
+function closePrintModal() {
+  printModal.classList.remove('active');
+}
+
+document.getElementById('printBackBtn').addEventListener('click', closePrintModal);
+
+// Reset card/print options for a new photo session
+function resetPrintOptions() {
+  cardPhotoIndex = 0;
+  printCountInput.value = 1;
+  renderedStrip = null;
+  renderedCards = {};
+  // Free decoded photos from the finished session
+  clearImageCache();
 }
 
 // Back to photos
@@ -1022,250 +1117,164 @@ document.getElementById('backToPhotosBtn').addEventListener('click', () => {
     capturedPhotos = [];
     currentPhotoIndex = 0;
     selectedFrameId = null;
-    
-    // Reset save button
-    const saveBtn = document.getElementById('savePhotosBtn');
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = 'บันทึกรูป';
-    
+    resetPrintOptions();
+
     // Reset UI
     frameSelectionScreen.style.display = 'none';
     captureScreen.style.display = 'block';
     currentPhotoSpan.textContent = '1';
-    
+
     // Reset to camera view
     video.style.display = 'block';
     document.getElementById('cameraControls').style.display = 'block';
     document.getElementById('captureActions').style.display = 'flex';
     previewContainer.style.display = 'none';
-    
+
     // Update thumbnails
     updateThumbnails();
-    
+
     // Restart camera
     initCamera();
   }
 });
 
-// Save photos
-document.getElementById('savePhotosBtn').addEventListener('click', async () => {
+// Next (after frame selection) -> print options modal
+document.getElementById('savePhotosBtn').addEventListener('click', () => {
   if (!selectedFrameId) {
     alert('กรุณาเลือกกรอบรูป');
     return;
   }
-  
-  const saveBtn = document.getElementById('savePhotosBtn');
-  const originalText = saveBtn.innerHTML;
-  
+
+  const frame = eventData.frames.find(f => f.id === selectedFrameId);
+
+  // Frame set without card frame -> confirm printing the card on white
+  if (eventData.cardEnabled && frame && !frame.cardPath &&
+      !confirm('กรอบนี้ยังไม่มีกรอบการ์ดอวยพร\nต้องการปริ้นการ์ดเป็นพื้นขาวแทนหรือไม่?')) {
+    return;
+  }
+
+  // Frame may have changed since last time - render composites again
+  renderedStrip = null;
+  renderedCards = {};
+  openPrintModal('initial');
+});
+
+// Reprint from success screen (same photo set, no upload)
+document.getElementById('reprintBtn').addEventListener('click', () => {
+  openPrintModal('reprint');
+});
+
+// Render (or reuse) full-size composites for printing
+async function getStripBlob(frame) {
+  if (!renderedStrip) {
+    renderedStrip = await renderCompositeBlob(stripSpec(frame, capturedPhotos));
+  }
+  return renderedStrip;
+}
+
+async function getCardBlob(frame, index) {
+  if (!renderedCards[index]) {
+    renderedCards[index] = await renderCompositeBlob(cardSpec(frame, capturedPhotos[index]));
+  }
+  return renderedCards[index];
+}
+
+// Print (and on first print: local backup + upload)
+confirmPrintBtn.addEventListener('click', async () => {
+  const frame = eventData.frames.find(f => f.id === selectedFrameId);
+  if (!frame) {
+    alert('กรุณาเลือกกรอบรูป');
+    return;
+  }
+
+  const isInitial = printModalMode === 'initial';
+  const mode = getPrintMode();
+  const originalText = confirmPrintBtn.innerHTML;
+
   try {
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = 'กำลังเตรียมพิมพ์...';
-    
-    // Generate composite locally first for immediate printing
-    const frame = eventData.frames.find(f => f.id === selectedFrameId);
-    if (frame) {
-      // Generate print version (4x6 inch - double)
-      const printComposite = await generateLocalComposite(capturedPhotos, frame.path, frame.overlayPath);
-      
-      // Save to local folder if enabled (single 2x6 inch)
-      if (localBackupEnabled && window.backupDirHandle) {
-        const fileName = `${eventData.filePrefix}_${String(eventData.photoCounter + 1).padStart(4, '0')}`;
-        const singleComposite = await generateSingleComposite(capturedPhotos, frame.path, frame.overlayPath);
-        await saveToLocalFolder(singleComposite, fileName);
-      }
-      
-      // Print immediately (4x6 inch)
-      printPhoto(printComposite);
-      
-      // Show success and start background upload
+    confirmPrintBtn.disabled = true;
+    confirmPrintBtn.innerHTML = 'กำลังเตรียมพิมพ์...';
+
+    // Render strip (2x6 inch) and/or card only when needed
+    const [stripBlob, cardBlob] = await Promise.all([
+      mode !== 'card' ? getStripBlob(frame) : null,
+      mode !== 'strip' ? getCardBlob(frame, cardPhotoIndex) : null
+    ]);
+
+    // Save to local folder if enabled (single 2x6 inch) - first print only
+    if (isInitial && localBackupEnabled && window.backupDirHandle) {
+      const fileName = `${eventData.filePrefix}_${String(eventData.photoCounter + 1).padStart(4, '0')}`;
+      await saveToLocalFolder(stripBlob, fileName);
+    }
+
+    // Print (4x6 inch sheets, one print job)
+    printSheets(computeSheets(mode, getPrintCount()), {
+      strip: stripBlob ? URL.createObjectURL(stripBlob) : null,
+      card: cardBlob ? URL.createObjectURL(cardBlob) : null
+    });
+
+    closePrintModal();
+
+    if (isInitial) {
+      // Show success and start background upload (once per photo set)
       showSuccess();
-      saveBtn.innerHTML = 'กำลังบันทึก...';
-      
-      // Upload in background (don't await)
-      uploadPhotosInBackground(capturedPhotos, selectedFrameId);
-    } else {
-      throw new Error('Frame not found');
+      uploadPhotosInBackground(capturedPhotos, selectedFrameId, eventData.cardEnabled ? cardPhotoIndex : null);
     }
   } catch (error) {
-    console.error('Save error:', error);
+    console.error('Print error:', error);
     alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = originalText;
+  } finally {
+    confirmPrintBtn.disabled = false;
+    confirmPrintBtn.innerHTML = originalText;
   }
 });
 
-// Generate composite locally for immediate printing
-async function generateLocalComposite(photos, frameUrl, overlayUrl) {
-  return new Promise(async (resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Print canvas size: 4x6 inch at 600 DPI = 4800x7200
-    // Two composites side by side: each 2400x7200
-    canvas.width = 4800;
-    canvas.height = 7200;
-    
-    const photoWidth = 2200;  // Centered with 100px margins on each side
-    const photoHeight = 1467; // 3:2 ratio
-    const sideMargin = 100;   // Center horizontally
-    const photoSpacing = 67;  // Reduced spacing between photos
-    
-    // Calculate total photos height and center vertically
-    const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
-    const topMargin = (7200 - totalPhotosHeight) / 2;  // Equal top and bottom margins
-    
-    // Load frame
-    const frameImg = new Image();
-    frameImg.crossOrigin = 'anonymous';
-    
-    // Load overlay (if exists)
-    let overlayImg = null;
-    if (overlayUrl) {
-      overlayImg = new Image();
-      overlayImg.crossOrigin = 'anonymous';
-      overlayImg.src = overlayUrl;
-      await new Promise((res) => {
-        overlayImg.onload = res;
-        overlayImg.onerror = () => res(); // Continue even if overlay fails
-      });
-    }
-    frameImg.onload = async () => {
-      // Clear canvas first
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // === LEFT SIDE ===
-      // LAYER 1: Draw frame as background
-      ctx.drawImage(frameImg, 0, 0, 2400, 7200);
-      
-      // LAYER 2: Draw photos (ALWAYS VISIBLE)
-      ctx.save();
-      for (let i = 0; i < photos.length; i++) {
-        const img = new Image();
-        img.src = photos[i];
-        
-        await new Promise((resolveImg) => {
-          img.onload = () => {
-            const y = topMargin + (i * (photoHeight + photoSpacing));
-            ctx.drawImage(img, sideMargin, y, photoWidth, photoHeight);
-            resolveImg();
-          };
-        });
-      }
-      ctx.restore();
-      
-      // LAYER 3: Draw overlay (if exists) - left side
-      if (overlayImg) {
-        ctx.drawImage(overlayImg, 0, 0, 2400, 7200);
-      }
-      
-      // === RIGHT SIDE ===
-      // LAYER 1: Draw frame as background
-      ctx.drawImage(frameImg, 2400, 0, 2400, 7200);
-      
-      // LAYER 2: Draw photos (ALWAYS VISIBLE)
-      ctx.save();
-      for (let i = 0; i < photos.length; i++) {
-        const img = new Image();
-        img.src = photos[i];
-        
-        await new Promise((resolveImg) => {
-          img.onload = () => {
-            const y = topMargin + (i * (photoHeight + photoSpacing));
-            ctx.drawImage(img, 2400 + sideMargin, y, photoWidth, photoHeight);
-            resolveImg();
-          };
-        });
-      }
-      ctx.restore();
-      
-      // LAYER 3: Draw overlay (if exists) - right side
-      if (overlayImg) {
-        ctx.drawImage(overlayImg, 2400, 0, 2400, 7200);
-      }
-      
-      // Return as data URL
-      resolve(canvas.toDataURL('image/jpeg', 0.95));
-    };
-    
-    frameImg.onerror = reject;
-    frameImg.src = frameUrl;
-  });
-}
+// Keyboard shortcuts while the print modal is open
+function handlePrintModalKey(e) {
+  if (e.code === 'Escape') {
+    e.preventDefault();
+    closePrintModal();
+    return;
+  }
 
-// Generate single composite for local backup (2x6 inch)
-async function generateSingleComposite(photos, frameUrl, overlayUrl) {
-  return new Promise(async (resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Single composite: 2x6 inch at 600 DPI = 2400x7200
-    canvas.width = 2400;
-    canvas.height = 7200;
-    
-    const photoWidth = 2200;  // Centered with 100px margins on each side
-    const photoHeight = 1467; // 3:2 ratio
-    const sideMargin = 100;   // Center horizontally
-    const photoSpacing = 67;  // Reduced spacing between photos
-    
-    // Calculate total photos height and center vertically
-    const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
-    const topMargin = (7200 - totalPhotosHeight) / 2;  // Equal top and bottom margins
-    
-    // Load frame
-    const frameImg = new Image();
-    frameImg.crossOrigin = 'anonymous';
-    
-    // Load overlay (if exists)
-    let overlayImg = null;
-    if (overlayUrl) {
-      overlayImg = new Image();
-      overlayImg.crossOrigin = 'anonymous';
-      overlayImg.src = overlayUrl;
-      await new Promise((res) => {
-        overlayImg.onload = res;
-        overlayImg.onerror = () => res(); // Continue even if overlay fails
-      });
+  if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+    e.preventDefault();
+    // Ignore key repeat so holding Enter from the frame screen doesn't print right away
+    if (!e.repeat && !confirmPrintBtn.disabled) {
+      confirmPrintBtn.click();
     }
-    
-    frameImg.onload = async () => {
-      // Clear canvas first
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // LAYER 1: Draw frame as background
-      ctx.drawImage(frameImg, 0, 0, 2400, 7200);
-      
-      // LAYER 2: Draw photos (ALWAYS VISIBLE)
-      ctx.save();
-      for (let i = 0; i < photos.length; i++) {
-        const img = new Image();
-        img.src = photos[i];
-        
-        await new Promise((resolveImg) => {
-          img.onload = () => {
-            const y = topMargin + (i * (photoHeight + photoSpacing));
-            ctx.drawImage(img, sideMargin, y, photoWidth, photoHeight);
-            resolveImg();
-          };
-        });
-      }
-      ctx.restore();
-      
-      // LAYER 3: Draw overlay (if exists)
-      if (overlayImg) {
-        ctx.drawImage(overlayImg, 0, 0, 2400, 7200);
-      }
-      
-      // Return as data URL
-      resolve(canvas.toDataURL('image/jpeg', 0.95));
-    };
-    
-    frameImg.onerror = reject;
-    frameImg.src = frameUrl;
-  });
+    return;
+  }
+
+  // Let inputs (quantity field, print type radios) handle their own keys
+  if (e.target.tagName === 'INPUT') return;
+
+  if (isCardSectionVisible()) {
+    const count = capturedPhotos.length;
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+      e.preventDefault();
+      const step = e.code === 'ArrowLeft' ? -1 : 1;
+      selectCardPhoto((cardPhotoIndex + step + count) % count);
+      return;
+    }
+    if (['1', '2', '3'].includes(e.key)) {
+      e.preventDefault();
+      selectCardPhoto(parseInt(e.key, 10) - 1);
+      return;
+    }
+  }
+
+  if (e.code === 'ArrowUp' || e.code === 'NumpadAdd' || e.key === '+' || e.key === '=') {
+    e.preventDefault();
+    changePrintCount(1);
+  } else if (e.code === 'ArrowDown' || e.code === 'NumpadSubtract' || e.key === '-') {
+    e.preventDefault();
+    changePrintCount(-1);
+  }
 }
 
 // Upload photos in background
-async function uploadPhotosInBackground(photos, frameId) {
+async function uploadPhotosInBackground(photos, frameId, cardPhotoIndex) {
   const statusText = document.getElementById('statusText');
   const statusIcon = document.getElementById('statusIcon');
   const statusDescription = document.getElementById('statusDescription');
@@ -1282,7 +1291,8 @@ async function uploadPhotosInBackground(photos, frameId) {
       },
       body: JSON.stringify({
         photos: photos,
-        frameId: frameId
+        frameId: frameId,
+        cardPhotoIndex: cardPhotoIndex
       })
     });
     
@@ -1318,7 +1328,7 @@ async function uploadPhotosInBackground(photos, frameId) {
 }
 
 // Save to local folder
-async function saveToLocalFolder(compositeDataUrl, fileName) {
+async function saveToLocalFolder(blob, fileName) {
   console.log('saveToLocalFolder called:', { 
     enabled: localBackupEnabled, 
     hasDirHandle: !!window.backupDirHandle,
@@ -1344,18 +1354,6 @@ async function saveToLocalFolder(compositeDataUrl, fileName) {
         return;
       }
     }
-    
-    console.log('Converting data URL to blob...');
-    // Convert data URL to blob directly (without fetch to avoid CSP issues)
-    const base64Data = compositeDataUrl.split(',')[1];
-    const byteCharacters = atob(base64Data);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'image/jpeg' });
-    console.log('Blob created:', blob.size, 'bytes');
     
     // Create file in selected folder
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
@@ -1413,12 +1411,8 @@ document.getElementById('takeMoreBtn').addEventListener('click', () => {
   capturedPhotos = [];
   currentPhotoIndex = 0;
   selectedFrameId = null;
-  
-  // Reset save button
-  const saveBtn = document.getElementById('savePhotosBtn');
-  saveBtn.disabled = false;
-  saveBtn.innerHTML = 'บันทึกรูป';
-  
+  resetPrintOptions();
+
   // Reset UI
   successScreen.style.display = 'none';
   captureScreen.style.display = 'block';
@@ -1443,6 +1437,12 @@ updateThumbnails();
 
 // ===== KEYBOARD SHORTCUTS =====
 document.addEventListener('keydown', (e) => {
+  // Print modal on top: it handles its own keys
+  if (printModal.classList.contains('active')) {
+    handlePrintModalKey(e);
+    return;
+  }
+
   // Ignore if typing in input fields
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
     return;
@@ -1540,7 +1540,13 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();
       document.getElementById('viewGalleryBtn').click();
     }
-    
+
+    // P: Reprint / fix print count
+    if (e.code === 'KeyP') {
+      e.preventDefault();
+      document.getElementById('reprintBtn').click();
+    }
+
     // T or Space or Enter: Take more photos
     if (e.code === 'KeyT' || e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
@@ -1606,11 +1612,18 @@ function showKeyboardHelp() {
 🖼️ หน้าเลือกกรอบ:
   ←/→ หรือ ↑/↓ - เลือกกรอบ
   1-9 - เลือกกรอบโดยตรง
-  Enter/S - บันทึกรูป
+  Enter/S - ถัดไป (ตั้งค่าการปริ้น)
   B/Esc - กลับไปถ่ายใหม่
+
+🖨️ หน้าต่างตั้งค่าการปริ้น:
+  ←/→ หรือ 1-3 - เลือกรูปการ์ด
+  ↑/↓ หรือ +/- - เพิ่ม/ลดจำนวน
+  Enter - ปริ้น
+  Esc - กลับ
 
 ✅ หน้าสำเร็จ:
   G - ดูแกลเลอรี่
+  P - ปริ้นเพิ่ม / แก้จำนวน
   T/Space/Enter - ถ่ายรูปอีก
 
 🌐 ทุกหน้า:
@@ -1618,76 +1631,4 @@ function showKeyboardHelp() {
   `;
   
   alert(helpText);
-}
-
-// Print photo function
-function printPhoto(compositeDataUrl) {
-  // Create a hidden iframe for printing
-  const printFrame = document.createElement('iframe');
-  printFrame.style.position = 'fixed';
-  printFrame.style.right = '0';
-  printFrame.style.bottom = '0';
-  printFrame.style.width = '0';
-  printFrame.style.height = '0';
-  printFrame.style.border = 'none';
-  document.body.appendChild(printFrame);
-  
-  // Write print content to iframe
-  const printDocument = printFrame.contentWindow.document;
-  printDocument.open();
-  printDocument.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Print Photo</title>
-      <style>
-        @page {
-          size: 4in 6in;
-          margin: 0;
-        }
-        
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        
-        body {
-          width: 4in;
-          height: 6in;
-          margin: 0;
-          padding: 0;
-          overflow: hidden;
-        }
-        
-        img {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          display: block;
-        }
-      </style>
-    </head>
-    <body>
-      <img src="${compositeDataUrl}" alt="Photo" id="printImg">
-    </body>
-    </html>
-  `);
-  printDocument.close();
-  
-  // Wait for image to load, then print
-  const img = printFrame.contentWindow.document.getElementById('printImg');
-  img.addEventListener('load', () => {
-    setTimeout(() => {
-      printFrame.contentWindow.print();
-    }, 100);
-  });
-  
-  // Remove iframe after printing
-  printFrame.contentWindow.addEventListener('afterprint', () => {
-    setTimeout(() => {
-      document.body.removeChild(printFrame);
-    }, 100);
-  });
 }

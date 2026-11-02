@@ -96,6 +96,53 @@
     </div>
   </div>
 
+  <!-- Print Options Modal (admin only) -->
+  <div id="printOptionsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>ปริ้นรูป</h2>
+      </div>
+
+      <div id="printTypeSection" class="print-option-card">
+        <h3>เลือกสิ่งที่จะปริ้น</h3>
+        <div class="print-type-options">
+          <label><input type="radio" name="printType" value="both" checked> ทั้งคู่</label>
+          <label><input type="radio" name="printType" value="strip"> รูป 1 ชุด</label>
+          <label><input type="radio" name="printType" value="card"> การ์ดอวยพร</label>
+        </div>
+      </div>
+
+      <div id="printCardSection" class="print-option-card">
+        <h3>การ์ดอวยพร</h3>
+        <div class="card-option-body">
+          <canvas id="printCardPreview" class="card-preview-canvas" width="300" height="900"></canvas>
+          <div>
+            <label class="print-option-label">เลือกรูปที่จะแสดงบนการ์ด</label>
+            <div id="printCardPhotoPicker" class="card-photo-picker"></div>
+            <p id="printNoCardNotice" class="no-card-notice" style="display: none;">⚠️ กรอบนี้ไม่มีกรอบการ์ดอวยพร จะใช้พื้นขาวแทน</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="print-option-card">
+        <h3>จำนวนที่จะปริ้น</h3>
+        <label class="print-option-label" for="galleryPrintCount" id="galleryPrintCountLabel">จำนวน "รูป 1 ชุด"</label>
+        <div class="quantity-stepper">
+          <button type="button" class="btn btn-secondary" id="galleryPrintMinus">−</button>
+          <input type="number" id="galleryPrintCount" min="1" value="1" inputmode="numeric">
+          <button type="button" class="btn btn-secondary" id="galleryPrintPlus">+</button>
+        </div>
+        <p id="galleryPrintSummary" class="print-summary"></p>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="cancelPrintBtn" class="btn btn-secondary">ยกเลิก</button>
+        <button type="button" id="confirmPrintBtn" class="btn btn-primary">ปริ้น</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/print-layout.js"></script>
   <script src="/gallery.js"></script>
 </body>
 </html>
