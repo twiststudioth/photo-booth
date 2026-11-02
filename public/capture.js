@@ -21,6 +21,24 @@ let stream = null;
 let capturedPhotos = [];
 let currentPhotoIndex = 0;
 let selectedFrameId = null;
+
+// Image adjustment settings
+let imageAdjustments = {
+  brightness: 0,
+  contrast: 0,
+  saturation: 0,
+  shadows: 0,
+  sharpness: 0, // -100 to 100
+  filter: 'none'
+};
+
+// Local backup settings
+let localBackupEnabled = localStorage.getItem('localBackupEnabled') === 'true';
+let selectedBackupFolder = localStorage.getItem('selectedBackupFolder') || '';
+
+// Try to restore directory handle from IndexedDB
+let restoringHandle = false;
+
 // DOM Elements
 const loadingScreen = document.getElementById('loadingScreen');
 const captureScreen = document.getElementById('captureScreen');
@@ -37,6 +55,149 @@ const retakeBtn = document.getElementById('retakeBtn');
 const nextBtn = document.getElementById('nextBtn');
 const thumbnails = document.getElementById('thumbnails');
 const currentPhotoSpan = document.getElementById('currentPhoto');
+
+// Local backup elements
+const localBackupToggle = document.getElementById('localBackupToggle');
+const backupFolderSection = document.getElementById('backupFolderSection');
+const selectFolderBtn = document.getElementById('selectFolderBtn');
+const selectedFolderPath = document.getElementById('selectedFolderPath');
+
+// Initialize local backup UI
+localBackupToggle.checked = localBackupEnabled;
+if (localBackupEnabled) {
+  backupFolderSection.style.display = 'flex';
+}
+if (selectedBackupFolder) {
+  selectedFolderPath.textContent = selectedBackupFolder;
+  selectedFolderPath.classList.add('selected');
+}
+
+// Restore directory handle from IndexedDB
+async function restoreDirectoryHandle() {
+  if (!('indexedDB' in window)) return;
+  
+  try {
+    const db = await openDB();
+    const tx = db.transaction('handles', 'readonly');
+    const store = tx.objectStore('handles');
+    const request = store.get('backupDir');
+    
+    return new Promise((resolve) => {
+      request.onsuccess = () => {
+        if (request.result) {
+          window.backupDirHandle = request.result.handle;
+          console.log('Restored directory handle from IndexedDB');
+        }
+        resolve();
+      };
+      request.onerror = () => resolve();
+    });
+  } catch (error) {
+    console.error('Failed to restore directory handle:', error);
+  }
+}
+
+// Save directory handle to IndexedDB
+async function saveDirectoryHandle(handle) {
+  if (!('indexedDB' in window)) return;
+  
+  try {
+    const db = await openDB();
+    const tx = db.transaction('handles', 'readwrite');
+    const store = tx.objectStore('handles');
+    store.put({ id: 'backupDir', handle: handle });
+    
+    return new Promise((resolve) => {
+      tx.oncomplete = () => {
+        console.log('Saved directory handle to IndexedDB');
+        resolve();
+      };
+      tx.onerror = () => resolve();
+    });
+  } catch (error) {
+    console.error('Failed to save directory handle:', error);
+  }
+}
+
+// Open IndexedDB
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('PhotoBoothDB', 1);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('handles')) {
+        db.createObjectStore('handles', { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+// Restore handle on page load
+if (localBackupEnabled && selectedBackupFolder) {
+  restoringHandle = true;
+  restoreDirectoryHandle().then(() => {
+    restoringHandle = false;
+    if (window.backupDirHandle) {
+      console.log('Directory handle restored successfully');
+    } else {
+      console.log('No directory handle found, user needs to select folder again');
+      selectedFolderPath.textContent = 'กรุณาเลือก folder ใหม่';
+      selectedFolderPath.classList.remove('selected');
+    }
+  });
+}
+
+// Local backup toggle handler
+localBackupToggle.addEventListener('change', (e) => {
+  localBackupEnabled = e.target.checked;
+  localStorage.setItem('localBackupEnabled', localBackupEnabled);
+  
+  if (localBackupEnabled) {
+    backupFolderSection.style.display = 'flex';
+    if (!selectedBackupFolder || !window.backupDirHandle) {
+      // Auto-prompt to select folder
+      setTimeout(() => selectFolderBtn.click(), 300);
+    }
+  } else {
+    backupFolderSection.style.display = 'none';
+  }
+});
+
+// Select folder handler
+selectFolderBtn.addEventListener('click', async () => {
+  try {
+    // Use File System Access API (Chrome/Edge)
+    if ('showDirectoryPicker' in window) {
+      const dirHandle = await window.showDirectoryPicker({
+        mode: 'readwrite'
+      });
+      
+      selectedBackupFolder = dirHandle.name;
+      selectedFolderPath.textContent = selectedBackupFolder;
+      selectedFolderPath.classList.add('selected');
+      
+      // Store directory handle
+      localStorage.setItem('selectedBackupFolder', selectedBackupFolder);
+      window.backupDirHandle = dirHandle;
+      
+      // Save to IndexedDB for persistence
+      await saveDirectoryHandle(dirHandle);
+      
+      console.log('Folder selected:', selectedBackupFolder);
+    } else {
+      alert('เบราว์เซอร์ของคุณไม่รองรับการเลือก folder โดยตรง\nกรุณาใช้ Chrome หรือ Edge เวอร์ชันล่าสุด');
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      console.error('Folder selection error:', error);
+      alert('ไม่สามารถเลือก folder ได้');
+    }
+  }
+});
 
 // Initialize
 async function init() {
@@ -75,11 +236,12 @@ async function init() {
 // Initialize camera
 async function initCamera() {
   try {
-    // Get last facing mode preference
+    // Get last selected camera and facing mode preference
+    const lastSelectedCamera = localStorage.getItem('selectedCamera');
     const lastFacingMode = localStorage.getItem('facingMode') || 'environment';
     
-    // Start camera with facing mode (works better on mobile)
-    await startCamera(null, lastFacingMode);
+    // Start camera with last selected camera or facing mode (works better on mobile)
+    await startCamera(lastSelectedCamera, lastFacingMode);
     
     // Get available cameras after starting
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -93,6 +255,11 @@ async function initCamera() {
       option.text = device.label || `กล้อง ${index + 1}`;
       cameraSelect.appendChild(option);
     });
+    
+    // Set the selected camera in dropdown if we have one saved
+    if (lastSelectedCamera) {
+      cameraSelect.value = lastSelectedCamera;
+    }
     
     // Detect if mobile device
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -112,10 +279,398 @@ async function initCamera() {
     if (isMobile) {
       cameraSelect.style.display = 'none';
     }
+    
+    // Initialize image adjustment controls
+    initImageAdjustments();
   } catch (error) {
     console.error('Camera initialization error:', error);
     alert('ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้อง');
   }
+}
+
+// Initialize image adjustment controls
+function initImageAdjustments() {
+  const toggleBtn = document.getElementById('toggleAdjustmentBtn');
+  const adjustmentOverlay = document.getElementById('adjustmentOverlay');
+  const brightnessSlider = document.getElementById('brightnessSlider');
+  const contrastSlider = document.getElementById('contrastSlider');
+  const saturationSlider = document.getElementById('saturationSlider');
+  const shadowSlider = document.getElementById('shadowSlider');
+  const sharpnessSlider = document.getElementById('sharpnessSlider');
+  const filterButtons = document.querySelectorAll('.filter-btn');
+  const resetBtn = document.getElementById('resetAdjustmentsBtn');
+  
+  // Toggle overlay visibility
+  toggleBtn.addEventListener('click', () => {
+    const isVisible = adjustmentOverlay.classList.contains('show');
+    
+    console.log('Toggle clicked, isVisible:', isVisible);
+    
+    if (isVisible) {
+      // Hide overlay
+      adjustmentOverlay.classList.remove('show');
+      toggleBtn.classList.remove('active');
+      console.log('Hiding panel');
+    } else {
+      // Show overlay
+      adjustmentOverlay.classList.add('show');
+      toggleBtn.classList.add('active');
+      console.log('Showing panel');
+    }
+  });
+  
+  // Brightness slider
+  brightnessSlider.addEventListener('input', (e) => {
+    imageAdjustments.brightness = parseInt(e.target.value);
+    document.getElementById('brightnessValue').textContent = e.target.value;
+    applyImageAdjustments();
+  });
+  
+  // Contrast slider
+  contrastSlider.addEventListener('input', (e) => {
+    imageAdjustments.contrast = parseInt(e.target.value);
+    document.getElementById('contrastValue').textContent = e.target.value;
+    applyImageAdjustments();
+  });
+  
+  // Shadow slider
+  if (shadowSlider) {
+    shadowSlider.addEventListener('input', (e) => {
+      imageAdjustments.shadows = parseInt(e.target.value);
+      document.getElementById('shadowValue').textContent = e.target.value;
+      applyImageAdjustments();
+    });
+  }
+  
+  // Saturation slider
+  saturationSlider.addEventListener('input', (e) => {
+    imageAdjustments.saturation = parseInt(e.target.value);
+    document.getElementById('saturationValue').textContent = e.target.value;
+    applyImageAdjustments();
+  });
+  
+  // Sharpness slider
+  if (sharpnessSlider) {
+    sharpnessSlider.addEventListener('input', (e) => {
+      imageAdjustments.sharpness = parseInt(e.target.value);
+      document.getElementById('sharpnessValue').textContent = e.target.value;
+      applyImageAdjustments();
+    });
+  }
+  
+  // Filter buttons
+  filterButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      imageAdjustments.filter = btn.dataset.filter;
+      applyImageAdjustments();
+    });
+  });
+  
+  // Reset button
+  resetBtn.addEventListener('click', () => {
+    imageAdjustments = {
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      shadows: 0,
+      sharpness: 0,
+      filter: 'none'
+    };
+    
+    brightnessSlider.value = 0;
+    contrastSlider.value = 0;
+    saturationSlider.value = 0;
+    if (shadowSlider) shadowSlider.value = 0;
+    if (sharpnessSlider) sharpnessSlider.value = 0;
+    document.getElementById('brightnessValue').textContent = '0';
+    document.getElementById('contrastValue').textContent = '0';
+    document.getElementById('saturationValue').textContent = '0';
+    if (document.getElementById('shadowValue')) document.getElementById('shadowValue').textContent = '0';
+    if (document.getElementById('sharpnessValue')) document.getElementById('sharpnessValue').textContent = '0';
+    
+    filterButtons.forEach(b => b.classList.remove('active'));
+    document.querySelector('[data-filter="none"]').classList.add('active');
+    
+    applyImageAdjustments();
+  });
+}
+
+// ===== SHARPNESS HELPERS =====
+
+// Build a 3x3 kernel for a given sharpness value (-100 to 100).
+// Positive values sharpen (unsharp-mask style), negative values soften (box blur).
+function buildSharpnessKernel(sharpness) {
+  const strength = sharpness / 100; // -1 to 1
+
+  if (strength > 0) {
+    const s = strength;
+    return [
+      0, -s, 0,
+      -s, 1 + 4 * s, -s,
+      0, -s, 0
+    ];
+  }
+
+  if (strength < 0) {
+    const b = -strength; // 0 to 1
+    const edge = b / 4;
+    const center = 1 - b;
+    return [
+      0, edge, 0,
+      edge, center, edge,
+      0, edge, 0
+    ];
+  }
+
+  return [0, 0, 0, 0, 1, 0, 0, 0, 0];
+}
+
+// Lazily create (once) a hidden SVG <filter> with feConvolveMatrix so the
+// live <video> preview can show sharpen/blur via CSS filter: url(#...)
+// (CSS filter() has no native sharpen function, so we synthesize one).
+function ensureSharpenPreviewFilter() {
+  if (document.getElementById('sharpenPreviewSVG')) return;
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('id', 'sharpenPreviewSVG');
+  svg.setAttribute('width', '0');
+  svg.setAttribute('height', '0');
+  svg.style.position = 'absolute';
+  svg.style.pointerEvents = 'none';
+
+  const filter = document.createElementNS(svgNS, 'filter');
+  filter.setAttribute('id', 'sharpenPreviewFilterEl');
+  // IMPORTANT: without this the browser convolves in linearRGB by default,
+  // which gives wildly different (usually near-invisible) results compared
+  // to the sRGB pixel math applyCanvasAdjustments() does on capture — that
+  // mismatch is exactly why the live preview looked like it had no effect.
+  filter.setAttribute('color-interpolation-filters', 'sRGB');
+
+  const feConvolveMatrix = document.createElementNS(svgNS, 'feConvolveMatrix');
+  feConvolveMatrix.setAttribute('id', 'sharpenPreviewConvolve');
+  feConvolveMatrix.setAttribute('order', '3');
+  feConvolveMatrix.setAttribute('preserveAlpha', 'true');
+  feConvolveMatrix.setAttribute('color-interpolation-filters', 'sRGB');
+  feConvolveMatrix.setAttribute('kernelMatrix', '0 0 0 0 1 0 0 0 0');
+
+  filter.appendChild(feConvolveMatrix);
+  svg.appendChild(filter);
+  document.body.appendChild(svg);
+}
+
+function updateSharpenPreviewFilter(sharpness) {
+  ensureSharpenPreviewFilter();
+  const feConvolveMatrix = document.getElementById('sharpenPreviewConvolve');
+  const kernel = buildSharpnessKernel(sharpness);
+  feConvolveMatrix.setAttribute('kernelMatrix', kernel.join(' '));
+}
+
+// Apply the same kernel permanently to captured pixel data (RGBA Uint8ClampedArray).
+// Returns a new Uint8ClampedArray; alpha channel is passed through unchanged.
+function applySharpnessConvolution(data, width, height, sharpness) {
+  if (!sharpness) return data;
+
+  const kernel = buildSharpnessKernel(sharpness);
+  const output = new Uint8ClampedArray(data.length);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0, g = 0, b = 0;
+      let k = 0;
+
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const px = Math.min(width - 1, Math.max(0, x + kx));
+          const py = Math.min(height - 1, Math.max(0, y + ky));
+          const idx = (py * width + px) * 4;
+          const kval = kernel[k++];
+
+          r += data[idx] * kval;
+          g += data[idx + 1] * kval;
+          b += data[idx + 2] * kval;
+        }
+      }
+
+      const outIdx = (y * width + x) * 4;
+      output[outIdx] = r;
+      output[outIdx + 1] = g;
+      output[outIdx + 2] = b;
+      output[outIdx + 3] = data[outIdx + 3];
+    }
+  }
+
+  return output;
+}
+
+// Apply image adjustments to video
+function applyImageAdjustments() {
+  const filters = [];
+  
+  // Brightness: -50 to 50 -> 0.5 to 1.5
+  const brightness = 1 + (imageAdjustments.brightness / 100);
+  filters.push(`brightness(${brightness})`);
+  
+  // Contrast: -50 to 50 -> 0.5 to 1.5
+  const contrast = 1 + (imageAdjustments.contrast / 100);
+  filters.push(`contrast(${contrast})`);
+  
+  // Saturation: -100 to 100 -> 0 to 2
+  const saturation = 1 + (imageAdjustments.saturation / 100);
+  filters.push(`saturate(${saturation})`);
+  
+  // Sharpness: -100 to 100 -> synthesized via SVG feConvolveMatrix
+  // (CSS has no native sharpen filter, so we build one on the fly)
+  if (imageAdjustments.sharpness) {
+    updateSharpenPreviewFilter(imageAdjustments.sharpness);
+    filters.push('url(#sharpenPreviewFilterEl)');
+  }
+  
+  // Apply filter preset
+  switch (imageAdjustments.filter) {
+    case 'bw':
+      filters.push('grayscale(100%)');
+      break;
+    case 'sepia':
+      filters.push('sepia(100%)');
+      break;
+    case 'vintage':
+      filters.push('sepia(50%) contrast(0.9) brightness(0.9)');
+      break;
+    case 'cool':
+      filters.push('hue-rotate(180deg) saturate(1.2)');
+      break;
+    case 'warm':
+      filters.push('sepia(30%) saturate(1.3)');
+      break;
+    case 'brighten':
+      filters.push('brightness(1.3) contrast(1.1) saturate(0.9)');
+      break;
+  }
+  
+  video.style.filter = filters.join(' ');
+}
+
+// Apply image adjustments to canvas (permanent)
+function applyCanvasAdjustments(ctx, width, height) {
+  // Get image data
+  const imageData = ctx.getImageData(0, 0, width, height);
+  let data = imageData.data;
+  
+  // Apply sharpness/softness first (needs original neighbor pixels,
+  // so it must run before the per-pixel color loop below rewrites them).
+  if (imageAdjustments.sharpness) {
+    const sharpened = applySharpnessConvolution(data, width, height, imageAdjustments.sharpness);
+    data.set(sharpened);
+  }
+  
+  // Calculate adjustment factors
+  const brightnessFactor = 1 + (imageAdjustments.brightness / 100);
+  const contrastFactor = 1 + (imageAdjustments.contrast / 100);
+  const saturationFactor = 1 + (imageAdjustments.saturation / 100);
+  const shadowAdjustment = imageAdjustments.shadows / 100; // -0.5 to 0.5
+  
+  // Apply adjustments pixel by pixel
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i + 1];
+    let b = data[i + 2];
+    
+    // Apply filter presets first
+    if (imageAdjustments.filter === 'bw') {
+      // Grayscale
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = g = b = gray;
+    } else if (imageAdjustments.filter === 'sepia') {
+      // Sepia
+      const tr = 0.393 * r + 0.769 * g + 0.189 * b;
+      const tg = 0.349 * r + 0.686 * g + 0.168 * b;
+      const tb = 0.272 * r + 0.534 * g + 0.131 * b;
+      r = tr;
+      g = tg;
+      b = tb;
+    } else if (imageAdjustments.filter === 'vintage') {
+      // Vintage (sepia + reduced contrast/brightness)
+      const tr = 0.393 * r + 0.769 * g + 0.189 * b;
+      const tg = 0.349 * r + 0.686 * g + 0.168 * b;
+      const tb = 0.272 * r + 0.534 * g + 0.131 * b;
+      r = tr * 0.5 + r * 0.5;
+      g = tg * 0.5 + g * 0.5;
+      b = tb * 0.5 + b * 0.5;
+      r *= 0.9;
+      g *= 0.9;
+      b *= 0.9;
+    } else if (imageAdjustments.filter === 'warm') {
+      // Warm (sepia tint + saturation boost)
+      const tr = 0.393 * r + 0.769 * g + 0.189 * b;
+      const tg = 0.349 * r + 0.686 * g + 0.168 * b;
+      const tb = 0.272 * r + 0.534 * g + 0.131 * b;
+      r = tr * 0.3 + r * 0.7;
+      g = tg * 0.3 + g * 0.7;
+      b = tb * 0.3 + b * 0.7;
+    } else if (imageAdjustments.filter === 'brighten') {
+      // ฟิลเตอร์สำหรับผิวคล้ำให้ดูขาวขึ้น
+      r *= 1.3;
+      g *= 1.3;
+      b *= 1.3;
+      r = ((r / 255 - 0.5) * 1.1 + 0.5) * 255;
+      g = ((g / 255 - 0.5) * 1.1 + 0.5) * 255;
+      b = ((b / 255 - 0.5) * 1.1 + 0.5) * 255;
+      const grayB = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = grayB + (r - grayB) * 0.9;
+      g = grayB + (g - grayB) * 0.9;
+      b = grayB + (b - grayB) * 0.9;
+    }
+    
+    // Apply shadows (improved algorithm - แบ่งเป็น 3 โซน)
+    if (shadowAdjustment !== 0) {
+      const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+      
+      if (luminance < 85) {
+        // Shadows - มีผลเต็มที่
+        const factor = 1 + (shadowAdjustment * 1.5);
+        r *= factor;
+        g *= factor;
+        b *= factor;
+      } else if (luminance < 170) {
+        // Midtones - มีผลปานกลาง
+        const midtoneInfluence = (170 - luminance) / 85;
+        const factor = 1 + (shadowAdjustment * 0.8 * midtoneInfluence);
+        r *= factor;
+        g *= factor;
+        b *= factor;
+      }
+      // Highlights - ไม่มีผล
+    }
+    
+    // Apply brightness
+    r *= brightnessFactor;
+    g *= brightnessFactor;
+    b *= brightnessFactor;
+    
+    // Apply contrast
+    r = ((r / 255 - 0.5) * contrastFactor + 0.5) * 255;
+    g = ((g / 255 - 0.5) * contrastFactor + 0.5) * 255;
+    b = ((b / 255 - 0.5) * contrastFactor + 0.5) * 255;
+    
+    // Apply saturation
+    if (saturationFactor !== 1) {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = gray + (r - gray) * saturationFactor;
+      g = gray + (g - gray) * saturationFactor;
+      b = gray + (b - gray) * saturationFactor;
+    }
+    
+    // Clamp values
+    data[i] = Math.max(0, Math.min(255, r));
+    data[i + 1] = Math.max(0, Math.min(255, g));
+    data[i + 2] = Math.max(0, Math.min(255, b));
+  }
+  
+  // Put modified image data back
+  ctx.putImageData(imageData, 0, 0);
 }
 
 // Start camera
@@ -245,6 +800,9 @@ captureBtn.addEventListener('click', async () => {
     sourceX, sourceY, sourceWidth, sourceHeight,
     0, 0, targetWidth, targetHeight
   );
+  
+  // Apply image adjustments to canvas
+  applyCanvasAdjustments(context, targetWidth, targetHeight);
   
   // Play shutter sound
   playBeep(1000, 100);
@@ -506,10 +1064,18 @@ document.getElementById('savePhotosBtn').addEventListener('click', async () => {
     // Generate composite locally first for immediate printing
     const frame = eventData.frames.find(f => f.id === selectedFrameId);
     if (frame) {
-      const localComposite = await generateLocalComposite(capturedPhotos, frame.path, frame.overlayPath);
+      // Generate print version (4x6 inch - double)
+      const printComposite = await generateLocalComposite(capturedPhotos, frame.path, frame.overlayPath);
       
-      // Print immediately
-      printPhoto(localComposite);
+      // Save to local folder if enabled (single 2x6 inch)
+      if (localBackupEnabled && window.backupDirHandle) {
+        const fileName = `${eventData.filePrefix}_${String(eventData.photoCounter + 1).padStart(4, '0')}`;
+        const singleComposite = await generateSingleComposite(capturedPhotos, frame.path, frame.overlayPath);
+        await saveToLocalFolder(singleComposite, fileName);
+      }
+      
+      // Print immediately (4x6 inch)
+      printPhoto(printComposite);
       
       // Show success and start background upload
       showSuccess();
@@ -626,6 +1192,78 @@ async function generateLocalComposite(photos, frameUrl, overlayUrl) {
   });
 }
 
+// Generate single composite for local backup (2x6 inch)
+async function generateSingleComposite(photos, frameUrl, overlayUrl) {
+  return new Promise(async (resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Single composite: 2x6 inch at 600 DPI = 2400x7200
+    canvas.width = 2400;
+    canvas.height = 7200;
+    
+    const photoWidth = 2200;  // Centered with 100px margins on each side
+    const photoHeight = 1467; // 3:2 ratio
+    const sideMargin = 100;   // Center horizontally
+    const photoSpacing = 67;  // Reduced spacing between photos
+    
+    // Calculate total photos height and center vertically
+    const totalPhotosHeight = (photoHeight * 3) + (photoSpacing * 2);
+    const topMargin = (7200 - totalPhotosHeight) / 2;  // Equal top and bottom margins
+    
+    // Load frame
+    const frameImg = new Image();
+    frameImg.crossOrigin = 'anonymous';
+    
+    // Load overlay (if exists)
+    let overlayImg = null;
+    if (overlayUrl) {
+      overlayImg = new Image();
+      overlayImg.crossOrigin = 'anonymous';
+      overlayImg.src = overlayUrl;
+      await new Promise((res) => {
+        overlayImg.onload = res;
+        overlayImg.onerror = () => res(); // Continue even if overlay fails
+      });
+    }
+    
+    frameImg.onload = async () => {
+      // Clear canvas first
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // LAYER 1: Draw frame as background
+      ctx.drawImage(frameImg, 0, 0, 2400, 7200);
+      
+      // LAYER 2: Draw photos (ALWAYS VISIBLE)
+      ctx.save();
+      for (let i = 0; i < photos.length; i++) {
+        const img = new Image();
+        img.src = photos[i];
+        
+        await new Promise((resolveImg) => {
+          img.onload = () => {
+            const y = topMargin + (i * (photoHeight + photoSpacing));
+            ctx.drawImage(img, sideMargin, y, photoWidth, photoHeight);
+            resolveImg();
+          };
+        });
+      }
+      ctx.restore();
+      
+      // LAYER 3: Draw overlay (if exists)
+      if (overlayImg) {
+        ctx.drawImage(overlayImg, 0, 0, 2400, 7200);
+      }
+      
+      // Return as data URL
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    
+    frameImg.onerror = reject;
+    frameImg.src = frameUrl;
+  });
+}
+
 // Upload photos in background
 async function uploadPhotosInBackground(photos, frameId) {
   const statusText = document.getElementById('statusText');
@@ -677,6 +1315,85 @@ async function uploadPhotosInBackground(photos, frameId) {
     statusDescription.style.display = 'none';
     statusNote.style.display = 'none';
   }
+}
+
+// Save to local folder
+async function saveToLocalFolder(compositeDataUrl, fileName) {
+  console.log('saveToLocalFolder called:', { 
+    enabled: localBackupEnabled, 
+    hasDirHandle: !!window.backupDirHandle,
+    fileName 
+  });
+  
+  if (!localBackupEnabled || !window.backupDirHandle) {
+    console.log('Local backup skipped - not enabled or no folder selected');
+    return;
+  }
+  
+  try {
+    console.log('Requesting permission...');
+    // Request permission if needed
+    const permission = await window.backupDirHandle.queryPermission({ mode: 'readwrite' });
+    console.log('Current permission:', permission);
+    
+    if (permission !== 'granted') {
+      const newPermission = await window.backupDirHandle.requestPermission({ mode: 'readwrite' });
+      console.log('New permission:', newPermission);
+      if (newPermission !== 'granted') {
+        console.error('Permission denied for local backup');
+        return;
+      }
+    }
+    
+    console.log('Converting data URL to blob...');
+    // Convert data URL to blob directly (without fetch to avoid CSP issues)
+    const base64Data = compositeDataUrl.split(',')[1];
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+    console.log('Blob created:', blob.size, 'bytes');
+    
+    // Create file in selected folder
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const fullFileName = `${fileName}_${timestamp}.jpg`;
+    console.log('Creating file:', fullFileName);
+    
+    const fileHandle = await window.backupDirHandle.getFileHandle(fullFileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    
+    console.log(`✅ Saved to local folder: ${fullFileName}`);
+    
+    // Show success notification to user
+    showToast(`บันทึกลงเครื่องสำเร็จ: ${fullFileName}`);
+  } catch (error) {
+    console.error('❌ Local backup error:', error);
+    // Show error to user
+    showToast('ไม่สามารถบันทึกลงเครื่องได้: ' + error.message, 'error');
+  }
+}
+
+// Show toast notification
+function showToast(message, type = 'success') {
+  const toast = document.createElement('div');
+  toast.className = 'toast show';
+  toast.textContent = message;
+  
+  if (type === 'error') {
+    toast.style.background = '#ef4444';
+  }
+  
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // Show success

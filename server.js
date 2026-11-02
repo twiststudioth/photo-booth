@@ -39,7 +39,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
       mediaSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
-      connectSrc: ["'self'", "https://res.cloudinary.com"]
+      connectSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"]
     }
   }
 }));
@@ -395,8 +395,7 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
       }
     }
     
-    // Generate GIF
-    const gifPath = await generateGIF(savedPhotos, photoSetFolder);
+    // ไม่สร้าง GIF อัตโนมัติอีกต่อไป - จะสร้างเฉพาะตอน download
     
     // Save photo set data
     const photoSet = {
@@ -405,7 +404,7 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
       fileName,
       photos: savedPhotos,
       composite: compositePath,
-      gif: gifPath,
+      gif: null, // ไม่เก็บ GIF ไว้ล่วงหน้า
       frameId,
       createdAt: new Date().toISOString()
     };
@@ -457,6 +456,71 @@ app.delete('/api/photos/:id', authMiddleware, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete photo set' });
+  }
+});
+
+// Generate GIF on-demand (สร้างเฉพาะตอน download)
+app.get('/api/photos/:id/gif', async (req, res) => {
+  try {
+    const photoSet = await db.getPhotoById(req.params.id);
+    
+    if (!photoSet) {
+      return res.status(404).json({ error: 'Photo set not found' });
+    }
+    
+    // Generate GIF from photos
+    const gifBuffer = await generateGIF(photoSet.photos);
+    
+    if (!gifBuffer) {
+      return res.status(500).json({ error: 'Failed to generate GIF' });
+    }
+    
+    // Send GIF as response
+    res.set('Content-Type', 'image/gif');
+    res.set('Content-Disposition', `attachment; filename="${photoSet.fileName}.gif"`);
+    res.send(gifBuffer);
+  } catch (error) {
+    console.error('GIF generation error:', error);
+    res.status(500).json({ error: 'Failed to generate GIF' });
+  }
+});
+
+// Generate print file (admin only) - จัดเรียง 2 ชุดรูป composite ในกระดาษ 4x6 นิ้ว
+app.get('/api/photos/:id/print', authMiddleware, async (req, res) => {
+  try {
+    console.log('Print request received for photo ID:', req.params.id);
+    
+    const photoSet = await db.getPhotoById(req.params.id);
+    
+    if (!photoSet) {
+      console.error('Photo set not found:', req.params.id);
+      return res.status(404).json({ error: 'Photo set not found' });
+    }
+    
+    if (!photoSet.composite) {
+      console.error('No composite image found for photo:', req.params.id);
+      return res.status(400).json({ error: 'No composite image found' });
+    }
+    
+    console.log('Generating print layout for composite:', photoSet.composite);
+    
+    // Generate print layout (2 composites on 4x6" paper)
+    const printBuffer = await generatePrintLayout(photoSet.composite);
+    
+    if (!printBuffer) {
+      console.error('Failed to generate print buffer');
+      return res.status(500).json({ error: 'Failed to generate print file' });
+    }
+    
+    console.log('Print buffer generated successfully, size:', printBuffer.length, 'bytes');
+    
+    // Send print file as response
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Content-Disposition', `attachment; filename="${photoSet.fileName}_print.jpg"`);
+    res.send(printBuffer);
+  } catch (error) {
+    console.error('Print file generation error:', error);
+    res.status(500).json({ error: 'Failed to generate print file' });
   }
 });
 
@@ -566,10 +630,11 @@ async function generateCompositeImage(photoUrls, frameUrl, overlayUrl, cloudinar
   }
 }
 
-// Helper function to generate GIF
-async function generateGIF(photoUrls, cloudinaryFolder) {
+// Helper function to generate GIF on-demand (ไม่อัพโหลดเข้า Cloudinary)
+async function generateGIF(photoUrls) {
   try {
-    const width = 600;
+    // ใช้ขนาดเท่ากับรูปต้นฉบับ (3:2 ratio)
+    const width = 900;  // 3:2 ratio
     const height = 600;
     
     const encoder = new GIFEncoder(width, height);
@@ -582,9 +647,12 @@ async function generateGIF(photoUrls, cloudinaryFolder) {
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       
-      // Resize and convert to raw pixel data
+      // Resize and convert to raw pixel data (ใช้ cover แทน contain เพื่อไม่ให้มีขอบขาว)
       const { data } = await sharp(buffer)
-        .resize(width, height, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+        .resize(width, height, { 
+          fit: 'cover',  // ครอปให้เต็มขนาด ไม่มีขอบขาว
+          position: 'center'
+        })
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
@@ -605,20 +673,72 @@ async function generateGIF(photoUrls, cloudinaryFolder) {
     
     encoder.finish();
     
-    // Get GIF buffer
-    const gifBuffer = encoder.out.getData();
-    
-    // Upload GIF to Cloudinary
-    const base64Gif = `data:image/gif;base64,${gifBuffer.toString('base64')}`;
-    const uploadResult = await cloudinary.uploader.upload(base64Gif, {
-      folder: cloudinaryFolder,
-      public_id: 'animation',
-      resource_type: 'image'
-    });
-    
-    return uploadResult.secure_url;
+    // Return GIF buffer (ไม่อัพโหลด)
+    return encoder.out.getData();
   } catch (error) {
     console.error('GIF generation error:', error);
+    return null;
+  }
+}
+
+// Helper function to generate print layout for 4x6" paper
+// จัดเรียง 2 ชุดรูป composite (แต่ละชุด 2x6 นิ้ว) ต่อข้างๆ กันให้เป็น 4x6 นิ้ว
+// กระดาษ 4x6" ที่ 600 DPI = 2400x3600 pixels (แนวนอน: width=2400, height=3600)
+async function generatePrintLayout(compositeUrl) {
+  try {
+    // กระดาษ 4x6 นิ้ว ที่ 600 DPI
+    const paperWidth = 2400;   // 4 inches * 600 DPI (แนวนอน)
+    const paperHeight = 3600;  // 6 inches * 600 DPI (แนวตั้ง)
+    
+    // รูป composite ต้นฉบับคือ 2400x7200 (2 inches x 12 inches ที่ 600 DPI)
+    // เราจะวาง 2 ชุดข้างๆ กัน แต่ละชุดครึ่งหนึ่งของความกว้าง
+    const compositeWidth = paperWidth / 2;  // 1200 pixels (2 inches)
+    const compositeHeight = paperHeight;     // 3600 pixels (6 inches)
+    
+    // Download composite from Cloudinary
+    const response = await fetch(compositeUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch composite: ${response.status} ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Resize composite to fit 2x6" (1200x3600 pixels)
+    // ใช้ cover เพื่อเติมเต็มพื้นที่ทั้งหมด
+    const resizedComposite = await sharp(buffer)
+      .resize(compositeWidth, compositeHeight, {
+        fit: 'cover',
+        position: 'center'
+      })
+      .toBuffer();
+    
+    // สร้าง canvas ขาว 2400x3600 และวาง composite 2 ชุดข้างๆ กัน
+    const printBuffer = await sharp({
+      create: {
+        width: paperWidth,
+        height: paperHeight,
+        channels: 3,
+        background: { r: 255, g: 255, b: 255 }
+      }
+    })
+    .composite([
+      {
+        input: resizedComposite,
+        top: 0,
+        left: 0  // ชุดแรกด้านซ้าย (0-1200px)
+      },
+      {
+        input: resizedComposite,
+        top: 0,
+        left: compositeWidth  // ชุดที่สองด้านขวา (1200-2400px)
+      }
+    ])
+    .jpeg({ quality: 100, progressive: true }) // คุณภาพสูงสุดสำหรับการปริ้น
+    .toBuffer();
+    
+    return printBuffer;
+  } catch (error) {
+    console.error('Print layout generation error:', error);
     return null;
   }
 }
