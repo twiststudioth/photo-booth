@@ -153,7 +153,8 @@ createEventForm.addEventListener('submit', async (e) => {
   const eventData = {
     name: document.getElementById('eventName').value,
     filePrefix: document.getElementById('filePrefix').value,
-    uploadFolder: document.getElementById('uploadFolder').value || 'default'
+    uploadFolder: document.getElementById('uploadFolder').value || 'default',
+    cardEnabled: document.getElementById('cardEnabled').checked
   };
   
   try {
@@ -193,7 +194,13 @@ async function showEventDetail(eventId) {
       <p><strong>โฟลเดอร์:</strong> ${event.uploadFolder}</p>
       <p><strong>จำนวนรูป:</strong> ${event.photoCounter || 0} ชุด</p>
       <p><strong>สร้างเมื่อ:</strong> ${new Date(event.createdAt).toLocaleDateString('th-TH')}</p>
+      <label class="checkbox-label">
+        <input type="checkbox" id="cardEnabledToggle" ${event.cardEnabled ? 'checked' : ''}> มีการ์ดอวยพร
+      </label>
     `;
+    document.getElementById('cardEnabledToggle').addEventListener('change', (e) => {
+      toggleCardEnabled(e.target);
+    });
 
     // Links
     const captureUrl = `${window.location.origin}/capture.html?event=${event.id}`;
@@ -203,50 +210,205 @@ async function showEventDetail(eventId) {
     document.getElementById('galleryLink').value = galleryUrl;
     
     // Frames
-    const framesList = document.getElementById('framesList');
-    framesList.innerHTML = '';
-    if (event.frames && event.frames.length > 0) {
-      event.frames.forEach(frame => {
-        const frameDiv = document.createElement('div');
-        frameDiv.className = 'frame-item';
-        
-        // Add overlay badge if frame has overlay
-        const overlayBadge = frame.overlayPath ? '<span class="overlay-badge" title="มี Overlay">🎭</span>' : '';
-        
-        frameDiv.innerHTML = `
-          <img src="${frame.path}" alt="${frame.name}">
-          ${overlayBadge}
-          <div class="frame-item-actions">
-            <button class="frame-edit-btn" data-event-id="${event.id}" data-frame-id="${frame.id}" title="แก้ไขกรอบ">
-              ✏️
-            </button>
-            <button class="frame-delete-btn" data-event-id="${event.id}" data-frame-id="${frame.id}" title="ลบกรอบ">
-              🗑️
-            </button>
-          </div>
-        `;
-        framesList.appendChild(frameDiv);
-      });
-    } else {
-      framesList.innerHTML = '<p style="color: var(--text-secondary);">ยังไม่มีกรอบ</p>';
-    }
-    
-    // Add event listeners for frame buttons
-    document.querySelectorAll('.frame-edit-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        editFrame(btn.dataset.eventId, btn.dataset.frameId);
-      });
-    });
-    
-    document.querySelectorAll('.frame-delete-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        deleteFrame(btn.dataset.eventId, btn.dataset.frameId);
-      });
-    });
-    
+    renderFramesList(event);
+
     eventDetailModal.classList.add('active');
   } catch (error) {
     console.error('Failed to load event detail:', error);
+  }
+}
+
+// Render frames (each frame set = strip frame + card frame when cards are enabled)
+function renderFramesList(event) {
+  const framesList = document.getElementById('framesList');
+  framesList.innerHTML = '';
+  framesList.classList.toggle('frames-grid-sets', !!event.cardEnabled);
+
+  if (event.frames && event.frames.length > 0) {
+    event.frames.forEach(frame => {
+      const frameDiv = document.createElement('div');
+      frameDiv.className = 'frame-item';
+
+      // Add overlay badge if frame has overlay
+      const overlayBadge = frame.overlayPath ? '<span class="overlay-badge" title="มี Overlay">🎭</span>' : '';
+
+      frameDiv.innerHTML = `
+        <img src="${frame.path}" alt="${frame.name}">
+        ${overlayBadge}
+        <div class="frame-item-actions">
+          <button class="frame-edit-btn" data-frame-id="${frame.id}" title="แก้ไขกรอบ">
+            ✏️
+          </button>
+          <button class="frame-delete-btn" data-frame-id="${frame.id}" title="ลบกรอบ">
+            🗑️
+          </button>
+        </div>
+      `;
+
+      if (!event.cardEnabled) {
+        framesList.appendChild(frameDiv);
+        return;
+      }
+
+      // Card frame of the same set
+      const cardDiv = document.createElement('div');
+      cardDiv.className = 'frame-item';
+      const cardOverlayBadge = frame.cardOverlayPath ? '<span class="overlay-badge" title="มี Overlay">🎭</span>' : '';
+      cardDiv.innerHTML = `
+        ${frame.cardPath
+          ? `<img src="${frame.cardPath}" alt="การ์ด ${frame.name}">`
+          : '<div class="frame-card-empty">ยังไม่มีกรอบการ์ด</div>'}
+        ${cardOverlayBadge}
+        <span class="frame-item-tag">การ์ด</span>
+        <div class="frame-item-actions">
+          <button class="frame-upload-btn" data-frame-id="${frame.id}" title="อัพโหลดกรอบการ์ด">
+            📤
+          </button>
+          <button class="frame-edit-btn" data-frame-id="${frame.id}" data-card="true" title="${frame.cardPath ? 'แก้ไขกรอบการ์ด' : 'สร้างกรอบการ์ด'}">
+            ✏️
+          </button>
+          ${frame.cardPath ? `
+          <button class="frame-delete-btn" data-frame-id="${frame.id}" data-card="true" title="ลบกรอบการ์ด">
+            🗑️
+          </button>` : ''}
+        </div>
+      `;
+
+      const setDiv = document.createElement('div');
+      setDiv.className = 'frame-set';
+      setDiv.appendChild(frameDiv);
+      setDiv.appendChild(cardDiv);
+      framesList.appendChild(setDiv);
+    });
+  } else {
+    framesList.innerHTML = '<p style="color: var(--text-secondary);">ยังไม่มีกรอบ</p>';
+  }
+
+  // Add event listeners for frame buttons
+  framesList.querySelectorAll('.frame-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editFrame(btn.dataset.frameId, btn.dataset.card === 'true');
+    });
+  });
+
+  framesList.querySelectorAll('.frame-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.card === 'true') {
+        deleteCardFrame(btn.dataset.frameId);
+      } else {
+        deleteFrame(event.id, btn.dataset.frameId);
+      }
+    });
+  });
+
+  framesList.querySelectorAll('.frame-upload-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      uploadingCardFrameId = btn.dataset.frameId;
+      document.getElementById('cardUpload').click();
+    });
+  });
+}
+
+// Toggle card feature for the current event
+async function toggleCardEnabled(checkbox) {
+  const cardEnabled = checkbox.checked;
+  checkbox.disabled = true;
+
+  try {
+    const response = await fetch(`/api/events/${currentEvent.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ cardEnabled })
+    });
+
+    if (response.ok) {
+      currentEvent.cardEnabled = cardEnabled;
+      renderFramesList(currentEvent);
+      showToast(cardEnabled ? 'เปิดการ์ดอวยพรแล้ว' : 'ปิดการ์ดอวยพรแล้ว');
+    } else {
+      checkbox.checked = !cardEnabled;
+      alert('บันทึกการตั้งค่าไม่สำเร็จ');
+    }
+  } catch (error) {
+    checkbox.checked = !cardEnabled;
+    alert('เกิดข้อผิดพลาด');
+  } finally {
+    checkbox.disabled = false;
+  }
+}
+
+// Replace a frame in currentEvent with the server response (no need to refetch the event)
+function applyFrameUpdate(frame) {
+  const index = currentEvent.frames.findIndex(f => f.id === frame.id);
+  if (index !== -1) {
+    currentEvent.frames[index] = frame;
+  }
+  renderFramesList(currentEvent);
+}
+
+// Upload card frame image for a frame set
+let uploadingCardFrameId = null;
+
+async function saveCardFrame(frameId, cardData, overlayData = null) {
+  const response = await fetch(`/api/events/${currentEvent.id}/frames/${frameId}/card`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ cardData, overlayData })
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to save card frame');
+  }
+
+  applyFrameUpdate(await response.json());
+}
+
+document.getElementById('cardUpload').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  const frameId = uploadingCardFrameId;
+  e.target.value = ''; // allow selecting the same file again
+  if (!file || !frameId) return;
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      await saveCardFrame(frameId, event.target.result);
+      showToast('อัพโหลดกรอบการ์ดสำเร็จ');
+    } catch (error) {
+      alert('อัพโหลดกรอบการ์ดไม่สำเร็จ');
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
+// Delete card frame of a frame set
+async function deleteCardFrame(frameId) {
+  if (!confirm('ต้องการลบกรอบการ์ดนี้หรือไม่?')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/events/${currentEvent.id}/frames/${frameId}/card`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    });
+
+    if (response.ok) {
+      applyFrameUpdate(await response.json());
+      showToast('ลบกรอบการ์ดสำเร็จ');
+    } else {
+      alert('ลบกรอบการ์ดไม่สำเร็จ');
+    }
+  } catch (error) {
+    alert('เกิดข้อผิดพลาด');
   }
 }
 
@@ -418,6 +580,7 @@ let bgImage = null;
 let isTransparent = false;
 let showPhotoAreas = true;
 let editingFrameId = null;
+let editingCard = false; // true = editing the card frame of frame set `editingFrameId`
 
 // Photo areas configuration with margins
 // Canvas: 2400x7200 (scaled to 600x1800 for editor)
@@ -441,27 +604,41 @@ const photoAreas = [
 // Open frame editor
 document.getElementById('createFrameBtn').addEventListener('click', () => {
   editingFrameId = null;
+  editingCard = false;
   frameEditorModal.classList.add('active');
   document.getElementById('frameEditorModal').querySelector('h2').textContent = 'สร้างกรอบรูป';
   initCanvas();
 });
 
-// Edit existing frame
-async function editFrame(eventId, frameId) {
+// Edit existing frame (card = edit/create the card frame of this frame set)
+async function editFrame(frameId, card = false) {
   try {
-    const response = await fetch(`/api/events/${eventId}`);
-    const event = await response.json();
-    const frame = event.frames.find(f => f.id === frameId);
-    
+    // currentEvent was just loaded by showEventDetail() - no need to refetch
+    const frame = currentEvent.frames.find(f => f.id === frameId);
+
     if (!frame) {
       alert('ไม่พบกรอบที่ต้องการแก้ไข');
       return;
     }
-    
+
     editingFrameId = frameId;
+    editingCard = card;
     frameEditorModal.classList.add('active');
-    document.getElementById('frameEditorModal').querySelector('h2').textContent = 'แก้ไขกรอบรูป';
-    
+    const title = document.getElementById('frameEditorModal').querySelector('h2');
+
+    if (card && !frame.cardPath) {
+      // New card frame for this set: start from a blank canvas
+      title.textContent = 'สร้างกรอบการ์ดอวยพร';
+      textElements = [];
+      overlayElements = [];
+      bgImage = null;
+      isTransparent = false;
+      initCanvas();
+      return;
+    }
+
+    title.textContent = card ? 'แก้ไขกรอบการ์ดอวยพร' : 'แก้ไขกรอบรูป';
+
     // Load frame image
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -470,7 +647,7 @@ async function editFrame(eventId, frameId) {
       initCanvas();
       redrawCanvas();
     };
-    img.src = frame.path;
+    img.src = card ? frame.cardPath : frame.path;
   } catch (error) {
     console.error('Failed to load frame:', error);
     alert('โหลดกรอบไม่สำเร็จ');
@@ -492,6 +669,9 @@ function initCanvas() {
   selectedTextIndex = -1;
   showPhotoAreas = true;
   document.getElementById('showPhotoAreas').checked = true;
+  document.getElementById('showPhotoAreasLabel').textContent = editingCard
+    ? 'แสดงตำแหน่งรูปการ์ด (รูปที่ 1)'
+    : 'แสดงตำแหน่งรูป 3 แอค';
   updateTextList();
   updateOverlayList();
   redrawCanvas();
@@ -832,7 +1012,8 @@ function redrawCanvas() {
   
   // Draw photo areas (if enabled)
   if (showPhotoAreas) {
-    photoAreas.forEach((area, index) => {
+    // Card frame has only the top photo slot
+    (editingCard ? photoAreas.slice(0, 1) : photoAreas).forEach((area, index) => {
       // Semi-transparent pink overlay
       ctx.fillStyle = 'rgba(255, 182, 193, 0.3)';
       ctx.fillRect(area.x, area.y, area.width, area.height);
@@ -938,7 +1119,21 @@ document.getElementById('saveFrameBtn').addEventListener('click', async () => {
   }
   
   const frameName = `custom_frame_${Date.now()}.png`;
-  
+
+  // Card frame of a frame set
+  if (editingCard) {
+    try {
+      await saveCardFrame(editingFrameId, frameData, overlayData);
+      frameEditorModal.classList.remove('active');
+      editingFrameId = null;
+      editingCard = false;
+      showToast('บันทึกกรอบการ์ดสำเร็จ');
+    } catch (error) {
+      alert('บันทึกกรอบการ์ดไม่สำเร็จ');
+    }
+    return;
+  }
+
   try {
     let response;
     if (editingFrameId) {

@@ -178,7 +178,7 @@
 
         <div class="frame-actions">
           <button id="backToPhotosBtn" class="btn btn-secondary btn-action">← กลับไปถ่ายใหม่ <kbd>Esc</kbd></button>
-          <button id="savePhotosBtn" class="btn btn-primary btn-action">บันทึกรูป <kbd>Enter</kbd></button>
+          <button id="savePhotosBtn" class="btn btn-primary btn-action">ถัดไป <kbd>Enter</kbd> →</button>
         </div>
       </div>
     </div>
@@ -191,6 +191,7 @@
         <p class="success-note" id="statusNote">คุณสามารถดูและดาวน์โหลดรูปได้ในแกลเลอรี่</p>
         <div class="button-group">
           <button id="viewGalleryBtn" class="btn btn-primary">ดูแกลเลอรี่ <kbd>G</kbd></button>
+          <button id="reprintBtn" class="btn btn-secondary">ปริ้นเพิ่ม / แก้จำนวน <kbd>P</kbd></button>
           <button id="takeMoreBtn" class="btn btn-secondary">ถ่ายรูปอีก <kbd>Enter</kbd></button>
         </div>
       </div>
@@ -223,6 +224,58 @@
     </footer>
   </div>
 
+  <!-- Print Options Modal (after frame selection, and for reprint) -->
+  <div id="printModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="printModalTitle">ตั้งค่าการปริ้น</h2>
+      </div>
+
+      <div class="keyboard-hint">
+        <span id="cardKeyHint">💡 <kbd>←</kbd> <kbd>→</kbd> หรือ <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> เลือกรูปการ์ด · </span>
+        <span><kbd>↑</kbd> <kbd>↓</kbd> หรือ <kbd>+</kbd> <kbd>−</kbd> เพิ่ม/ลดจำนวน · <kbd>Enter</kbd> ปริ้น · <kbd>Esc</kbd> กลับ</span>
+      </div>
+
+      <div id="printTypeSection" class="print-option-card" style="display: none;">
+        <h3>เลือกสิ่งที่จะปริ้น</h3>
+        <div class="print-type-options">
+          <label><input type="radio" name="printType" value="both" checked> ทั้งคู่</label>
+          <label><input type="radio" name="printType" value="strip"> รูป 1 ชุด</label>
+          <label><input type="radio" name="printType" value="card"> การ์ดอวยพร</label>
+        </div>
+      </div>
+
+      <div id="cardOptions" class="print-option-card" style="display: none;">
+        <h3>การ์ดอวยพร</h3>
+        <div class="card-option-body">
+          <canvas id="cardPreviewCanvas" class="card-preview-canvas" width="300" height="900"></canvas>
+          <div>
+            <label class="print-option-label">เลือกรูปที่จะแสดงบนการ์ด</label>
+            <div id="cardPhotoPicker" class="card-photo-picker"></div>
+            <p id="noCardFrameNotice" class="no-card-notice" style="display: none;">⚠️ กรอบนี้ยังไม่มีกรอบการ์ดอวยพร จะใช้พื้นขาวแทน</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="print-option-card">
+        <h3>จำนวนที่จะปริ้น</h3>
+        <label class="print-option-label" for="printCountInput" id="printCountLabel">จำนวน "รูป 1 ชุด"</label>
+        <div class="quantity-stepper">
+          <button type="button" class="btn btn-secondary" id="printCountMinus">−</button>
+          <input type="number" id="printCountInput" min="1" value="1" inputmode="numeric">
+          <button type="button" class="btn btn-secondary" id="printCountPlus">+</button>
+        </div>
+        <p id="printSummary" class="print-summary"></p>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="printBackBtn" class="btn btn-secondary">← กลับไปเลือกกรอบ <kbd>Esc</kbd></button>
+        <button type="button" id="confirmPrintBtn" class="btn btn-primary">ปริ้น <kbd>Enter</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/print-layout.js"></script>
   <script src="/capture.js"></script>
 </body>
 </html>

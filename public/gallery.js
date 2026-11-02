@@ -1,6 +1,7 @@
 // Gallery Page JavaScript
 
 let currentEventId = null;
+let currentEvent = null;
 let allPhotoSets = [];
 let currentPhotoSet = null;
 let currentPhotoIndex = 0;
@@ -54,6 +55,7 @@ async function loadEventInfo() {
     }
     
     const event = await response.json();
+    currentEvent = event;
     document.getElementById('eventName').textContent = event.name;
     document.title = `${event.name} - แกลเลอรี่`;
   } catch (error) {
@@ -75,12 +77,10 @@ async function loadPhotos() {
     // Load photos from current event only
     const photosResponse = await fetch(`/api/events/${currentEventId}/photos`);
     const photos = await photosResponse.json();
-    
-    // Get event name
-    const eventResponse = await fetch(`/api/events/${currentEventId}`);
-    const event = await eventResponse.json();
-    
-    allPhotoSets = photos.map(p => ({ ...p, eventName: event.name }));
+
+    // Event already loaded by loadEventInfo() - no need to fetch it again
+    const eventName = currentEvent ? currentEvent.name : '';
+    allPhotoSets = photos.map(p => ({ ...p, eventName }));
     
     displayPhotos();
   } catch (error) {
@@ -144,6 +144,7 @@ function optimizeCloudinaryUrl(url, type = 'thumbnail') {
   // Define transformations based on type
   const transformations = {
     thumbnail: 'w_200,h_240,c_fill,f_auto,q_auto:eco',
+    small: 'w_300,f_auto,q_auto:eco',
     preview: 'w_800,f_auto,q_auto:good',
     full: 'f_auto,q_auto:best' // ดาวน์โหลดขนาดเต็ม 2400x1600 ไม่ resize
   };
@@ -493,132 +494,174 @@ async function downloadPhoto(url, filename, buttonElement = null) {
   }
 }
 
-// Print photo (admin only) - จัดเรียง 2 ชุดรูป composite ต่อกันในกระดาษ 4x6 นิ้ว
-printPhotoBtn.addEventListener('click', async () => {
-  if (!currentPhotoSet || !currentPhotoSet.composite) {
-    alert('ไม่พบรูป composite สำหรับปริ้น');
-    return;
+// ===== PRINT (admin only) =====
+// จัดหน้ากระดาษ 4x6 นิ้วบนเครื่อง (ไม่ต้องให้ server สร้างไฟล์ปริ้น)
+const printOptionsModal = document.getElementById('printOptionsModal');
+const printTypeSection = document.getElementById('printTypeSection');
+const printCardSection = document.getElementById('printCardSection');
+const galleryPrintCount = document.getElementById('galleryPrintCount');
+const confirmPrintBtn = document.getElementById('confirmPrintBtn');
+let printCardPhotoIndex = 0;
+let printCardPreviewToken = 0;
+
+// Card printing is available when the event has cards, or the set was taken with a card
+function photoSetHasCard(photoSet) {
+  return !!(currentEvent && currentEvent.cardEnabled) || Number.isInteger(photoSet.cardPhotoIndex);
+}
+
+function getPhotoSetFrame(photoSet) {
+  return (currentEvent && currentEvent.frames || []).find(f => f.id === photoSet.frameId) || null;
+}
+
+function getGalleryPrintType() {
+  if (!photoSetHasCard(currentPhotoSet)) return 'strip';
+  return document.querySelector('input[name="printType"]:checked').value;
+}
+
+function getGalleryPrintCount() {
+  const count = parseInt(galleryPrintCount.value, 10);
+  return Number.isInteger(count) && count >= 1 ? count : 1;
+}
+
+function updateGalleryPrintOptions() {
+  const type = getGalleryPrintType();
+  const showCard = type !== 'strip';
+  
+  printCardSection.style.display = showCard ? 'block' : 'none';
+  document.getElementById('galleryPrintCountLabel').textContent =
+    type === 'card' ? 'จำนวน "การ์ดอวยพร"' : 'จำนวน "รูป 1 ชุด"';
+  document.getElementById('galleryPrintSummary').textContent =
+    describeSheets(computeSheets(type, getGalleryPrintCount()));
+  
+  if (showCard) {
+    renderPrintCardPreview();
   }
+}
+
+// Build card photo picker for the current set
+function renderPrintCardPicker() {
+  const picker = document.getElementById('printCardPhotoPicker');
+  picker.innerHTML = '';
+  
+  currentPhotoSet.photos.forEach((photo, index) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'card-photo-option';
+    option.classList.toggle('selected', index === printCardPhotoIndex);
+    option.innerHTML = `<img src="${optimizeCloudinaryUrl(photo, 'small')}" alt="รูปที่ ${index + 1}"><span>รูปที่ ${index + 1}</span>`;
+    option.addEventListener('click', () => {
+      printCardPhotoIndex = index;
+      picker.querySelectorAll('.card-photo-option').forEach((el, i) => {
+        el.classList.toggle('selected', i === index);
+      });
+      renderPrintCardPreview();
+    });
+    picker.appendChild(option);
+  });
+}
+
+// Draw card preview (uses preview-size photo to keep it light)
+async function renderPrintCardPreview() {
+  const frame = getPhotoSetFrame(currentPhotoSet);
+  const token = ++printCardPreviewToken;
+  document.getElementById('printNoCardNotice').style.display = frame && frame.cardPath ? 'none' : 'block';
   
   try {
-    const originalText = printPhotoBtn.textContent;
-    printPhotoBtn.disabled = true;
-    printPhotoBtn.textContent = 'กำลังเตรียมรูป...';
+    const photo = optimizeCloudinaryUrl(currentPhotoSet.photos[printCardPhotoIndex], 'preview');
+    const images = await loadCompositeImages(cardSpec(frame, photo));
+    // Skip stale renders when the selection changed while loading
+    if (token !== printCardPreviewToken) return;
+    const canvas = document.getElementById('printCardPreview');
+    paintComposite(canvas.getContext('2d'), canvas.width, canvas.height, images);
+  } catch (error) {
+    console.error('Card preview error:', error);
+  }
+}
+
+// Strip image for printing: stored composite, or render locally if it is missing
+async function getStripPrintUrl(photoSet, frame) {
+  if (photoSet.composite) {
+    return photoSet.composite;
+  }
+  if (!frame) {
+    throw new Error('ไม่พบรูป composite สำหรับปริ้น');
+  }
+  return URL.createObjectURL(await renderCompositeBlob(stripSpec(frame, photoSet.photos)));
+}
+
+function closePrintOptions() {
+  printOptionsModal.classList.remove('active');
+  // Free decoded full-size images
+  clearImageCache();
+}
+
+// Open print options
+printPhotoBtn.addEventListener('click', () => {
+  if (!currentPhotoSet) return;
+  
+  const hasCard = photoSetHasCard(currentPhotoSet);
+  printTypeSection.style.display = hasCard ? 'block' : 'none';
+  document.querySelector('input[name="printType"][value="both"]').checked = true;
+  galleryPrintCount.value = 1;
+  printCardPhotoIndex = Number.isInteger(currentPhotoSet.cardPhotoIndex) ? currentPhotoSet.cardPhotoIndex : 0;
+  
+  if (hasCard) {
+    renderPrintCardPicker();
+  }
+  updateGalleryPrintOptions();
+  
+  printOptionsModal.classList.add('active');
+});
+
+document.querySelectorAll('input[name="printType"]').forEach(radio => {
+  radio.addEventListener('change', updateGalleryPrintOptions);
+});
+
+galleryPrintCount.addEventListener('input', updateGalleryPrintOptions);
+galleryPrintCount.addEventListener('change', () => {
+  galleryPrintCount.value = getGalleryPrintCount();
+  updateGalleryPrintOptions();
+});
+
+document.getElementById('galleryPrintMinus').addEventListener('click', () => {
+  galleryPrintCount.value = Math.max(1, getGalleryPrintCount() - 1);
+  updateGalleryPrintOptions();
+});
+
+document.getElementById('galleryPrintPlus').addEventListener('click', () => {
+  galleryPrintCount.value = getGalleryPrintCount() + 1;
+  updateGalleryPrintOptions();
+});
+
+document.getElementById('cancelPrintBtn').addEventListener('click', closePrintOptions);
+
+// Confirm print
+confirmPrintBtn.addEventListener('click', async () => {
+  const type = getGalleryPrintType();
+  const frame = getPhotoSetFrame(currentPhotoSet);
+  const originalText = confirmPrintBtn.textContent;
+  
+  try {
+    confirmPrintBtn.disabled = true;
+    confirmPrintBtn.textContent = 'กำลังเตรียมรูป...';
     
-    console.log('Requesting print file for photo set:', currentPhotoSet.id);
+    const [stripUrl, cardBlob] = await Promise.all([
+      type !== 'card' ? getStripPrintUrl(currentPhotoSet, frame) : null,
+      type !== 'strip' ? renderCompositeBlob(cardSpec(frame, currentPhotoSet.photos[printCardPhotoIndex])) : null
+    ]);
     
-    // Request print file from server (2 composites arranged for 4x6" paper)
-    const response = await fetch(`/api/photos/${currentPhotoSet.id}/print`, {
-      headers: {
-        'Authorization': `Bearer ${authToken}`
-      }
+    printSheets(computeSheets(type, getGalleryPrintCount()), {
+      strip: stripUrl,
+      card: cardBlob ? URL.createObjectURL(cardBlob) : null
     });
     
-    console.log('Print response status:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Print response error:', errorText);
-      throw new Error(`Failed to generate print file: ${response.status}`);
-    }
-    
-    const blob = await response.blob();
-    console.log('Received blob size:', blob.size, 'bytes');
-    
-    // สร้าง URL จาก blob
-    const blobUrl = URL.createObjectURL(blob);
-    
-    // สร้าง iframe ซ่อนไว้สำหรับปริ้น
-    const printFrame = document.createElement('iframe');
-    printFrame.style.display = 'none';
-    printFrame.onload = function() {
-      try {
-        // เขียน HTML สำหรับปริ้นลงใน iframe
-        let frameDoc = printFrame.contentWindow || printFrame.contentDocument;
-        if (frameDoc.document) frameDoc = frameDoc.document;
-        
-        frameDoc.open();
-        frameDoc.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Print - ${currentPhotoSet.fileName}</title>
-            <style>
-              * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-              }
-              body {
-                margin: 0;
-                padding: 0;
-              }
-              img {
-                display: block;
-                width: 100%;
-                height: auto;
-              }
-              @media print {
-                @page {
-                  size: 4in 6in;
-                  margin: 0;
-                }
-                body {
-                  margin: 0;
-                  padding: 0;
-                }
-                img {
-                  width: 100%;
-                  height: 100%;
-                  object-fit: contain;
-                  page-break-inside: avoid;
-                }
-              }
-            </style>
-          </head>
-          <body>
-            <img src="${blobUrl}" alt="Print">
-          </body>
-          </html>
-        `);
-        frameDoc.close();
-        
-        // รอให้รูปโหลดเสร็จแล้วเปิด print dialog
-        setTimeout(() => {
-          try {
-            printFrame.contentWindow.focus();
-            printFrame.contentWindow.print();
-            
-            // ลบ iframe และ blob URL หลังจากปริ้นเสร็จ
-            setTimeout(() => {
-              document.body.removeChild(printFrame);
-              URL.revokeObjectURL(blobUrl);
-            }, 1000);
-          } catch (e) {
-            console.error('Print error:', e);
-            document.body.removeChild(printFrame);
-            URL.revokeObjectURL(blobUrl);
-          }
-        }, 500);
-      } catch (e) {
-        console.error('Frame load error:', e);
-        document.body.removeChild(printFrame);
-        URL.revokeObjectURL(blobUrl);
-      }
-    };
-    
-    document.body.appendChild(printFrame);
-    
-    console.log('Print dialog preparing...');
-    
-    printPhotoBtn.disabled = false;
-    printPhotoBtn.textContent = originalText;
+    closePrintOptions();
   } catch (error) {
     console.error('Print file generation failed:', error);
     alert(`สร้างไฟล์ปริ้นไม่สำเร็จ: ${error.message}`);
-    
-    printPhotoBtn.disabled = false;
-    printPhotoBtn.textContent = 'ปริ้นรูปนี้';
+  } finally {
+    confirmPrintBtn.disabled = false;
+    confirmPrintBtn.textContent = originalText;
   }
 });
 
@@ -648,7 +691,7 @@ deleteSetBtn.addEventListener('click', async () => {
 });
 
 // Close modal
-document.querySelectorAll('.close-btn').forEach(btn => {
+document.querySelectorAll('#photoViewerModal .close-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     photoViewerModal.classList.remove('active');
     // Stop slideshow
@@ -665,7 +708,13 @@ document.querySelectorAll('.close-btn').forEach(btn => {
 // Keyboard navigation
 document.addEventListener('keydown', (e) => {
   if (!photoViewerModal.classList.contains('active')) return;
-  
+
+  // Print options open on top: only Escape (close it) applies
+  if (printOptionsModal.classList.contains('active')) {
+    if (e.key === 'Escape') closePrintOptions();
+    return;
+  }
+
   if (e.key === 'ArrowLeft') {
     const prevBtn = document.querySelector('.prev-btn');
     if (!prevBtn.disabled) {

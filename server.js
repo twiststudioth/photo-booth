@@ -150,6 +150,7 @@ app.post('/api/events', authMiddleware, async (req, res) => {
       name: req.body.name,
       filePrefix: req.body.filePrefix || 'EVENT',
       uploadFolder: req.body.uploadFolder || 'default',
+      cardEnabled: !!req.body.cardEnabled,
       frames: [],
       photoCounter: 0,
       createdAt: new Date().toISOString()
@@ -299,6 +300,7 @@ app.put('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, res)
     
     // Update frame
     event.frames[frameIndex] = {
+      ...event.frames[frameIndex], // keep card frame fields
       id: req.params.frameId,
       name: frameName || event.frames[frameIndex].name,
       path: uploadResult.secure_url,
@@ -329,10 +331,15 @@ app.delete('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, r
       return res.status(404).json({ error: 'Frame not found' });
     }
     
-    // Delete frame from Cloudinary
+    // Delete frame (and its card frame, if any) from Cloudinary
     const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
     try {
-      await cloudinary.uploader.destroy(`${cloudinaryFolder}/frames/${req.params.frameId}`);
+      const frame = event.frames[frameIndex];
+      await Promise.all([
+        cloudinary.uploader.destroy(`${cloudinaryFolder}/frames/${req.params.frameId}`),
+        frame.cardPath && cloudinary.uploader.destroy(`${cloudinaryFolder}/frames/${req.params.frameId}_card`),
+        frame.cardOverlayPath && cloudinary.uploader.destroy(`${cloudinaryFolder}/overlays/${req.params.frameId}_card_overlay`)
+      ]);
     } catch (error) {
       console.error('Failed to delete frame from Cloudinary:', error);
     }
@@ -347,10 +354,107 @@ app.delete('/api/events/:eventId/frames/:frameId', authMiddleware, async (req, r
   }
 });
 
+// Upload/replace card frame of a frame set (admin only)
+app.put('/api/events/:eventId/frames/:frameId/card', authMiddleware, async (req, res) => {
+  try {
+    const { cardData, overlayData } = req.body;
+    
+    if (!cardData) {
+      return res.status(400).json({ error: 'No card data provided' });
+    }
+    
+    const event = await db.getEventById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    
+    const frame = event.frames.find(f => f.id === req.params.frameId);
+    if (!frame) {
+      return res.status(404).json({ error: 'Frame not found' });
+    }
+    
+    const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
+    const cardPublicId = `${req.params.frameId}_card`;
+    
+    // Upload card frame (and overlay) in parallel, overwriting previous versions
+    const [cardResult, overlayResult] = await Promise.all([
+      cloudinary.uploader.upload(cardData, {
+        folder: `${cloudinaryFolder}/frames`,
+        public_id: cardPublicId,
+        resource_type: 'image',
+        overwrite: true
+      }),
+      overlayData
+        ? cloudinary.uploader.upload(overlayData, {
+            folder: `${cloudinaryFolder}/overlays`,
+            public_id: `${cardPublicId}_overlay`,
+            resource_type: 'image',
+            overwrite: true
+          })
+        : null
+    ]);
+    
+    // Remove old card overlay if the new card has none
+    if (!overlayData && frame.cardOverlayPath) {
+      try {
+        await cloudinary.uploader.destroy(`${cloudinaryFolder}/overlays/${cardPublicId}_overlay`);
+      } catch (error) {
+        console.error('Failed to delete old card overlay from Cloudinary:', error);
+      }
+    }
+    
+    frame.cardPath = cardResult.secure_url;
+    frame.cardOverlayPath = overlayResult ? overlayResult.secure_url : null;
+    
+    await db.updateEvent(event.id, { frames: event.frames });
+    
+    res.json(frame);
+  } catch (error) {
+    console.error('Card frame upload error:', error);
+    res.status(500).json({ error: 'Failed to upload card frame' });
+  }
+});
+
+// Delete card frame of a frame set (admin only)
+app.delete('/api/events/:eventId/frames/:frameId/card', authMiddleware, async (req, res) => {
+  try {
+    const event = await db.getEventById(req.params.eventId);
+    
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    
+    const frame = event.frames.find(f => f.id === req.params.frameId);
+    if (!frame) {
+      return res.status(404).json({ error: 'Frame not found' });
+    }
+    
+    const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
+    try {
+      await Promise.all([
+        cloudinary.uploader.destroy(`${cloudinaryFolder}/frames/${req.params.frameId}_card`),
+        frame.cardOverlayPath && cloudinary.uploader.destroy(`${cloudinaryFolder}/overlays/${req.params.frameId}_card_overlay`)
+      ]);
+    } catch (error) {
+      console.error('Failed to delete card frame from Cloudinary:', error);
+    }
+    
+    frame.cardPath = null;
+    frame.cardOverlayPath = null;
+    
+    await db.updateEvent(event.id, { frames: event.frames });
+    
+    res.json(frame);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete card frame' });
+  }
+});
+
 // Save photo set (admin only)
 app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
   try {
-    const { photos, frameId } = req.body;
+    const { photos, frameId, cardPhotoIndex } = req.body;
     
     if (!photos || photos.length !== 3) {
       return res.status(400).json({ error: 'Must provide exactly 3 photos' });
@@ -406,6 +510,8 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
       composite: compositePath,
       gif: null, // ไม่เก็บ GIF ไว้ล่วงหน้า
       frameId,
+      // รูปที่ใช้บนการ์ดอวยพร (0-2) - ไม่อัพโหลดรูปการ์ด สร้างตอนปริ้นจากรูปชุดนี้แทน
+      cardPhotoIndex: Number.isInteger(cardPhotoIndex) && cardPhotoIndex >= 0 && cardPhotoIndex < 3 ? cardPhotoIndex : null,
       createdAt: new Date().toISOString()
     };
     
@@ -482,45 +588,6 @@ app.get('/api/photos/:id/gif', async (req, res) => {
   } catch (error) {
     console.error('GIF generation error:', error);
     res.status(500).json({ error: 'Failed to generate GIF' });
-  }
-});
-
-// Generate print file (admin only) - จัดเรียง 2 ชุดรูป composite ในกระดาษ 4x6 นิ้ว
-app.get('/api/photos/:id/print', authMiddleware, async (req, res) => {
-  try {
-    console.log('Print request received for photo ID:', req.params.id);
-    
-    const photoSet = await db.getPhotoById(req.params.id);
-    
-    if (!photoSet) {
-      console.error('Photo set not found:', req.params.id);
-      return res.status(404).json({ error: 'Photo set not found' });
-    }
-    
-    if (!photoSet.composite) {
-      console.error('No composite image found for photo:', req.params.id);
-      return res.status(400).json({ error: 'No composite image found' });
-    }
-    
-    console.log('Generating print layout for composite:', photoSet.composite);
-    
-    // Generate print layout (2 composites on 4x6" paper)
-    const printBuffer = await generatePrintLayout(photoSet.composite);
-    
-    if (!printBuffer) {
-      console.error('Failed to generate print buffer');
-      return res.status(500).json({ error: 'Failed to generate print file' });
-    }
-    
-    console.log('Print buffer generated successfully, size:', printBuffer.length, 'bytes');
-    
-    // Send print file as response
-    res.set('Content-Type', 'image/jpeg');
-    res.set('Content-Disposition', `attachment; filename="${photoSet.fileName}_print.jpg"`);
-    res.send(printBuffer);
-  } catch (error) {
-    console.error('Print file generation error:', error);
-    res.status(500).json({ error: 'Failed to generate print file' });
   }
 });
 
@@ -677,68 +744,6 @@ async function generateGIF(photoUrls) {
     return encoder.out.getData();
   } catch (error) {
     console.error('GIF generation error:', error);
-    return null;
-  }
-}
-
-// Helper function to generate print layout for 4x6" paper
-// จัดเรียง 2 ชุดรูป composite (แต่ละชุด 2x6 นิ้ว) ต่อข้างๆ กันให้เป็น 4x6 นิ้ว
-// กระดาษ 4x6" ที่ 600 DPI = 2400x3600 pixels (แนวนอน: width=2400, height=3600)
-async function generatePrintLayout(compositeUrl) {
-  try {
-    // กระดาษ 4x6 นิ้ว ที่ 600 DPI
-    const paperWidth = 2400;   // 4 inches * 600 DPI (แนวนอน)
-    const paperHeight = 3600;  // 6 inches * 600 DPI (แนวตั้ง)
-    
-    // รูป composite ต้นฉบับคือ 2400x7200 (2 inches x 12 inches ที่ 600 DPI)
-    // เราจะวาง 2 ชุดข้างๆ กัน แต่ละชุดครึ่งหนึ่งของความกว้าง
-    const compositeWidth = paperWidth / 2;  // 1200 pixels (2 inches)
-    const compositeHeight = paperHeight;     // 3600 pixels (6 inches)
-    
-    // Download composite from Cloudinary
-    const response = await fetch(compositeUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch composite: ${response.status} ${response.statusText}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    
-    // Resize composite to fit 2x6" (1200x3600 pixels)
-    // ใช้ cover เพื่อเติมเต็มพื้นที่ทั้งหมด
-    const resizedComposite = await sharp(buffer)
-      .resize(compositeWidth, compositeHeight, {
-        fit: 'cover',
-        position: 'center'
-      })
-      .toBuffer();
-    
-    // สร้าง canvas ขาว 2400x3600 และวาง composite 2 ชุดข้างๆ กัน
-    const printBuffer = await sharp({
-      create: {
-        width: paperWidth,
-        height: paperHeight,
-        channels: 3,
-        background: { r: 255, g: 255, b: 255 }
-      }
-    })
-    .composite([
-      {
-        input: resizedComposite,
-        top: 0,
-        left: 0  // ชุดแรกด้านซ้าย (0-1200px)
-      },
-      {
-        input: resizedComposite,
-        top: 0,
-        left: compositeWidth  // ชุดที่สองด้านขวา (1200-2400px)
-      }
-    ])
-    .jpeg({ quality: 100, progressive: true }) // คุณภาพสูงสุดสำหรับการปริ้น
-    .toBuffer();
-    
-    return printBuffer;
-  } catch (error) {
-    console.error('Print layout generation error:', error);
     return null;
   }
 }
