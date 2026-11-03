@@ -29,6 +29,7 @@
           <div class="capture-left">
             <div class="camera-container">
               <video id="video" autoplay playsinline></video>
+              <canvas id="livePreview" class="live-preview" style="display: none;"></canvas>
               <canvas id="canvas" style="display: none;"></canvas>
               
               <div id="countdown" class="countdown" style="display: none;">
@@ -69,6 +70,15 @@
               <button id="resetAdjustmentsBtn" class="btn-reset" title="รีเซ็ต">↻</button>
             </div>
 
+            <!-- Beauty -->
+            <div class="adjustment-section adjustment-beauty">
+              <label class="adjustment-label">
+                ✨ โหมดบิวตี้ (หน้าเนียน)
+                <span id="beautyValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="beautySlider" class="adjustment-slider" min="0" max="100" value="0" step="1">
+            </div>
+
             <!-- Filters -->
             <div class="adjustment-section">
               <label class="adjustment-label">ฟิลเตอร์</label>
@@ -80,6 +90,10 @@
                 <button class="filter-btn" data-filter="cool">เย็น</button>
                 <button class="filter-btn" data-filter="warm">อบอุ่น</button>
                 <button class="filter-btn" data-filter="brighten">ผิวขาว</button>
+                <button class="filter-btn" data-filter="soft">ละมุน</button>
+                <button class="filter-btn" data-filter="film">ฟิล์ม</button>
+                <button class="filter-btn" data-filter="pink">ชมพูหวาน</button>
+                <button class="filter-btn" data-filter="vivid">สดใส</button>
               </div>
             </div>
 
@@ -99,6 +113,24 @@
                 <span id="contrastValue" class="adjustment-value">0</span>
               </label>
               <input type="range" id="contrastSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+            </div>
+
+            <!-- Temperature -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">
+                อุณหภูมิสี (เย็น ↔ อุ่น)
+                <span id="temperatureValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="temperatureSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+            </div>
+
+            <!-- Highlights -->
+            <div class="adjustment-section">
+              <label class="adjustment-label">
+                ส่วนสว่าง
+                <span id="highlightsValue" class="adjustment-value">0</span>
+              </label>
+              <input type="range" id="highlightsSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
             </div>
 
             <!-- Shadows -->
@@ -276,6 +308,7 @@
   </div>
 
   <script src="/print-layout.js"></script>
+  <script src="/image-pipeline.js"></script>
   <script src="/capture.js"></script>
 </body>
 </html>

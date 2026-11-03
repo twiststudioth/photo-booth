@@ -23,15 +23,46 @@ let currentPhotoIndex = 0;
 let selectedFrameId = null;
 let cardPhotoIndex = 0; // รูปที่แสดงบนการ์ดอวยพร (default รูปที่ 1)
 
-// Image adjustment settings
-let imageAdjustments = {
+// Image adjustment settings (remembered on this device)
+const DEFAULT_ADJUSTMENTS = {
+  beauty: 0,      // 0 to 100
   brightness: 0,
   contrast: 0,
   saturation: 0,
+  temperature: 0, // -50 (cool) to 50 (warm)
+  highlights: 0,
   shadows: 0,
-  sharpness: 0, // -100 to 100
+  sharpness: 0,   // -100 to 100
   filter: 'none'
 };
+let imageAdjustments = loadImageAdjustments();
+
+function loadImageAdjustments() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('imageAdjustments'));
+    if (saved && typeof saved === 'object') {
+      return { ...DEFAULT_ADJUSTMENTS, ...saved };
+    }
+  } catch (error) {
+    // Ignore unreadable storage
+  }
+  return { ...DEFAULT_ADJUSTMENTS };
+}
+
+function saveImageAdjustments() {
+  try {
+    localStorage.setItem('imageAdjustments', JSON.stringify(imageAdjustments));
+  } catch (error) {
+    // Storage unavailable (private mode) - settings just won't be remembered
+  }
+}
+
+// GPU (WebGL) preview + capture
+let previewRenderer = null;
+let captureRenderer = null;
+let captureCanvasGL = null;
+let previewDirty = true;
+let lastPreviewTime = -1;
 
 // Local backup settings
 let localBackupEnabled = localStorage.getItem('localBackupEnabled') === 'true';
@@ -289,113 +320,120 @@ async function initCamera() {
   }
 }
 
+// Slider key -> [slider element id, value label id]
+const ADJUSTMENT_SLIDERS = {
+  beauty: ['beautySlider', 'beautyValue'],
+  brightness: ['brightnessSlider', 'brightnessValue'],
+  contrast: ['contrastSlider', 'contrastValue'],
+  temperature: ['temperatureSlider', 'temperatureValue'],
+  highlights: ['highlightsSlider', 'highlightsValue'],
+  shadows: ['shadowSlider', 'shadowValue'],
+  saturation: ['saturationSlider', 'saturationValue'],
+  sharpness: ['sharpnessSlider', 'sharpnessValue']
+};
+let adjustmentsInitialized = false;
+
 // Initialize image adjustment controls
 function initImageAdjustments() {
+  // Called on every camera (re)start - bind controls only once
+  if (adjustmentsInitialized) return;
+  adjustmentsInitialized = true;
+
   const toggleBtn = document.getElementById('toggleAdjustmentBtn');
   const adjustmentOverlay = document.getElementById('adjustmentOverlay');
-  const brightnessSlider = document.getElementById('brightnessSlider');
-  const contrastSlider = document.getElementById('contrastSlider');
-  const saturationSlider = document.getElementById('saturationSlider');
-  const shadowSlider = document.getElementById('shadowSlider');
-  const sharpnessSlider = document.getElementById('sharpnessSlider');
   const filterButtons = document.querySelectorAll('.filter-btn');
   const resetBtn = document.getElementById('resetAdjustmentsBtn');
-  
+
   // Toggle overlay visibility
   toggleBtn.addEventListener('click', () => {
-    const isVisible = adjustmentOverlay.classList.contains('show');
-    
-    console.log('Toggle clicked, isVisible:', isVisible);
-    
-    if (isVisible) {
-      // Hide overlay
-      adjustmentOverlay.classList.remove('show');
-      toggleBtn.classList.remove('active');
-      console.log('Hiding panel');
-    } else {
-      // Show overlay
-      adjustmentOverlay.classList.add('show');
-      toggleBtn.classList.add('active');
-      console.log('Showing panel');
-    }
+    const isVisible = adjustmentOverlay.classList.toggle('show');
+    toggleBtn.classList.toggle('active', isVisible);
   });
-  
-  // Brightness slider
-  brightnessSlider.addEventListener('input', (e) => {
-    imageAdjustments.brightness = parseInt(e.target.value);
-    document.getElementById('brightnessValue').textContent = e.target.value;
-    applyImageAdjustments();
-  });
-  
-  // Contrast slider
-  contrastSlider.addEventListener('input', (e) => {
-    imageAdjustments.contrast = parseInt(e.target.value);
-    document.getElementById('contrastValue').textContent = e.target.value;
-    applyImageAdjustments();
-  });
-  
-  // Shadow slider
-  if (shadowSlider) {
-    shadowSlider.addEventListener('input', (e) => {
-      imageAdjustments.shadows = parseInt(e.target.value);
-      document.getElementById('shadowValue').textContent = e.target.value;
+
+  // Sliders
+  Object.entries(ADJUSTMENT_SLIDERS).forEach(([key, [sliderId, valueId]]) => {
+    const slider = document.getElementById(sliderId);
+    if (!slider) return;
+    slider.addEventListener('input', (e) => {
+      imageAdjustments[key] = parseInt(e.target.value);
+      document.getElementById(valueId).textContent = e.target.value;
       applyImageAdjustments();
     });
-  }
-  
-  // Saturation slider
-  saturationSlider.addEventListener('input', (e) => {
-    imageAdjustments.saturation = parseInt(e.target.value);
-    document.getElementById('saturationValue').textContent = e.target.value;
-    applyImageAdjustments();
   });
-  
-  // Sharpness slider
-  if (sharpnessSlider) {
-    sharpnessSlider.addEventListener('input', (e) => {
-      imageAdjustments.sharpness = parseInt(e.target.value);
-      document.getElementById('sharpnessValue').textContent = e.target.value;
-      applyImageAdjustments();
-    });
-  }
-  
+
   // Filter buttons
   filterButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      filterButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
       imageAdjustments.filter = btn.dataset.filter;
+      syncAdjustmentControls();
       applyImageAdjustments();
     });
   });
-  
+
   // Reset button
   resetBtn.addEventListener('click', () => {
-    imageAdjustments = {
-      brightness: 0,
-      contrast: 0,
-      saturation: 0,
-      shadows: 0,
-      sharpness: 0,
-      filter: 'none'
-    };
-    
-    brightnessSlider.value = 0;
-    contrastSlider.value = 0;
-    saturationSlider.value = 0;
-    if (shadowSlider) shadowSlider.value = 0;
-    if (sharpnessSlider) sharpnessSlider.value = 0;
-    document.getElementById('brightnessValue').textContent = '0';
-    document.getElementById('contrastValue').textContent = '0';
-    document.getElementById('saturationValue').textContent = '0';
-    if (document.getElementById('shadowValue')) document.getElementById('shadowValue').textContent = '0';
-    if (document.getElementById('sharpnessValue')) document.getElementById('sharpnessValue').textContent = '0';
-    
-    filterButtons.forEach(b => b.classList.remove('active'));
-    document.querySelector('[data-filter="none"]').classList.add('active');
-    
+    imageAdjustments = { ...DEFAULT_ADJUSTMENTS };
+    syncAdjustmentControls();
     applyImageAdjustments();
   });
+
+  // Restore remembered settings into the controls
+  syncAdjustmentControls();
+  initGpuPreview();
+  applyImageAdjustments();
+}
+
+// Reflect imageAdjustments in sliders, labels and filter buttons
+function syncAdjustmentControls() {
+  Object.entries(ADJUSTMENT_SLIDERS).forEach(([key, [sliderId, valueId]]) => {
+    const slider = document.getElementById(sliderId);
+    if (!slider) return;
+    slider.value = imageAdjustments[key];
+    document.getElementById(valueId).textContent = imageAdjustments[key];
+  });
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === imageAdjustments.filter);
+  });
+}
+
+// ===== GPU LIVE PREVIEW =====
+// Video stays as the (invisible) source; a WebGL canvas on top shows the adjusted image
+function initGpuPreview() {
+  const livePreview = document.getElementById('livePreview');
+  previewRenderer = createAdjustmentRenderer(livePreview);
+
+  if (!previewRenderer) {
+    console.warn('WebGL not available - using CSS/CPU image adjustments');
+    return;
+  }
+
+  livePreview.style.display = 'block';
+  video.classList.add('video-source-hidden');
+  requestAnimationFrame(renderPreviewFrame);
+}
+
+function renderPreviewFrame() {
+  requestAnimationFrame(renderPreviewFrame);
+
+  const livePreview = document.getElementById('livePreview');
+
+  // Skip while hidden (photo preview / other screens) or without a new camera frame
+  if (!livePreview.clientHeight || document.hidden || !video.videoWidth) return;
+  if (video.currentTime === lastPreviewTime && !previewDirty) return;
+
+  // Canvas resolution follows the displayed size (capped for performance)
+  const targetWidth = Math.min(1280, Math.round(livePreview.clientWidth * (window.devicePixelRatio || 1)));
+  const targetHeight = Math.round(targetWidth / ADJUST_ASPECT);
+  if (livePreview.width !== targetWidth || livePreview.height !== targetHeight) {
+    livePreview.width = targetWidth;
+    livePreview.height = targetHeight;
+  }
+
+  if (previewRenderer.render(video, video.videoWidth, video.videoHeight, imageAdjustments)) {
+    lastPreviewTime = video.currentTime;
+    previewDirty = false;
+  }
 }
 
 // ===== SHARPNESS HELPERS =====
@@ -508,6 +546,15 @@ function applySharpnessConvolution(data, width, height, sharpness) {
 
 // Apply image adjustments to video
 function applyImageAdjustments() {
+  saveImageAdjustments();
+
+  // GPU preview renders adjustments itself on the next frame
+  if (previewRenderer) {
+    video.style.filter = '';
+    previewDirty = true;
+    return;
+  }
+
   const filters = [];
   
   // Brightness: -50 to 50 -> 0.5 to 1.5
@@ -767,9 +814,47 @@ captureBtn.addEventListener('click', async () => {
   
   // Take photo
   countdownEl.style.display = 'none';
-  
+
+  // GPU capture (same shader as the live preview); CPU fallback without WebGL
+  const photoData = captureWithGpu() || captureWithCpu();
+
+  // Play shutter sound
+  playBeep(1000, 100);
+
+  capturedPhotos[currentPhotoIndex] = photoData;
+
+  // Show preview
+  preview.src = photoData;
+  video.style.display = 'none';
+  document.getElementById('cameraControls').style.display = 'none';
+  document.getElementById('captureActions').style.display = 'none';
+  previewContainer.style.display = 'block';
+
+  updateThumbnails();
+  captureBtn.disabled = false;
+});
+
+// Capture current frame with the GPU pipeline (returns null when unavailable)
+function captureWithGpu() {
+  if (!previewRenderer) return null;
+
+  if (!captureCanvasGL) {
+    captureCanvasGL = document.createElement('canvas');
+    captureCanvasGL.width = ADJUST_CAPTURE_WIDTH;
+    captureCanvasGL.height = ADJUST_CAPTURE_HEIGHT;
+    captureRenderer = createAdjustmentRenderer(captureCanvasGL, { preserveDrawingBuffer: true });
+  }
+
+  if (captureRenderer && captureRenderer.render(video, video.videoWidth, video.videoHeight, imageAdjustments)) {
+    return captureCanvasGL.toDataURL('image/jpeg', 0.95);
+  }
+  return null;
+}
+
+// Capture current frame on the CPU (fallback for devices without WebGL)
+function captureWithCpu() {
   const context = canvas.getContext('2d');
-  
+
   // Set canvas to 3:2 aspect ratio (2400x1600 for each photo)
   const targetWidth = 2400;
   const targetHeight = 1600;
@@ -804,23 +889,9 @@ captureBtn.addEventListener('click', async () => {
   
   // Apply image adjustments to canvas
   applyCanvasAdjustments(context, targetWidth, targetHeight);
-  
-  // Play shutter sound
-  playBeep(1000, 100);
-  
-  const photoData = canvas.toDataURL('image/jpeg', 0.95);
-  capturedPhotos[currentPhotoIndex] = photoData;
-  
-  // Show preview
-  preview.src = photoData;
-  video.style.display = 'none';
-  document.getElementById('cameraControls').style.display = 'none';
-  document.getElementById('captureActions').style.display = 'none';
-  previewContainer.style.display = 'block';
-  
-  updateThumbnails();
-  captureBtn.disabled = false;
-});
+
+  return canvas.toDataURL('image/jpeg', 0.95);
+}
 
 // Play beep sound
 function playBeep(frequency = 600, duration = 200) {
