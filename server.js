@@ -454,7 +454,7 @@ app.delete('/api/events/:eventId/frames/:frameId/card', authMiddleware, async (r
 // Save photo set (admin only)
 app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
   try {
-    const { photos, frameId, cardPhotoIndex } = req.body;
+    const { photos, frameId, cardPhotoIndex, fileNumber } = req.body;
     
     if (!photos || photos.length !== 3) {
       return res.status(400).json({ error: 'Must provide exactly 3 photos' });
@@ -466,8 +466,10 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
     
-    // Increment counter
-    event.photoCounter++;
+    // Increment counter - use the number the booth already gave this set (local file name)
+    // so both match; never go backwards (sets that were not uploaded still use up numbers)
+    const requestedNumber = Number.isInteger(fileNumber) ? fileNumber : 0;
+    event.photoCounter = Math.max((event.photoCounter || 0) + 1, requestedNumber);
     const photoSetId = uuidv4();
     const fileName = `${event.filePrefix}_${String(event.photoCounter).padStart(4, '0')}`;
     
