@@ -606,6 +606,21 @@ body {
   display: block;
 }
 
+/* GPU preview: video stays as the (invisible) source, canvas shows the adjusted image */
+#video.video-source-hidden {
+  opacity: 0;
+}
+
+.live-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
 /* Countdown */
 .countdown {
   position: absolute;
@@ -1475,9 +1490,11 @@ body {
   right: 0;
   bottom: 0;
   width: 420px;
+  max-width: 100%;
   background: transparent;
   z-index: 90;
-  pointer-events: auto;
+  /* Transparent container must not block taps (e.g. capture button on mobile) */
+  pointer-events: none;
   display: block;
 }
 
@@ -1503,6 +1520,7 @@ body {
 
 .adjustment-overlay.show .adjustment-panel-floating {
   transform: translateX(0);
+  pointer-events: auto;
 }
 
 .adjustment-panel-floating::-webkit-scrollbar {
@@ -1597,6 +1615,13 @@ body {
 
 .adjustment-section:last-child {
   margin-bottom: 0;
+}
+
+.adjustment-beauty {
+  background: #fdf2f8;
+  border: 1px solid #fbcfe8;
+  border-radius: 10px;
+  padding: 12px;
 }
 
 .adjustment-label {
