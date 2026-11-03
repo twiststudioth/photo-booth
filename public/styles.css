@@ -2426,7 +2426,7 @@ kbd {
     max-height: 50vh;
   }
 }
-m
+
 /* ===== Greeting Card + Print Options ===== */
 .print-option-card {
   background: var(--surface);
