@@ -66,6 +66,13 @@ let lastPreviewTime = -1;
 
 // Local backup settings
 let localBackupEnabled = localStorage.getItem('localBackupEnabled') === 'true';
+
+// Cloud upload setting (default on) - when off, photos are only printed / saved locally
+let cloudUploadEnabled = localStorage.getItem('cloudUploadEnabled') !== 'false';
+
+// Last used file number (EVENT_0001...) - counted on this device so it keeps going
+// even when sets are not uploaded; synced with the server after each upload
+let localPhotoCounter = 0;
 let selectedBackupFolder = localStorage.getItem('selectedBackupFolder') || '';
 
 // Try to restore directory handle from IndexedDB
@@ -183,9 +190,42 @@ if (localBackupEnabled && selectedBackupFolder) {
   });
 }
 
+// Warn when photos would be kept nowhere (no local backup, no cloud upload)
+const cloudUploadToggle = document.getElementById('cloudUploadToggle');
+const noStorageWarning = document.getElementById('noStorageWarning');
+cloudUploadToggle.checked = cloudUploadEnabled;
+
+function updateNoStorageWarning() {
+  noStorageWarning.style.display = !localBackupEnabled && !cloudUploadEnabled ? 'block' : 'none';
+}
+
+function confirmNoStorage() {
+  return confirm('จะปิดทั้ง "บันทึกลงเครื่อง" และ "อัพโหลดขึ้น cloud"\nรูปจะไม่ถูกเก็บไว้ที่ไหนเลย มีแค่ที่ปริ้นออกมา\n\nต้องการปิดหรือไม่?');
+}
+
+updateNoStorageWarning();
+
+// Cloud upload toggle handler
+cloudUploadToggle.addEventListener('change', (e) => {
+  if (!e.target.checked && !localBackupEnabled && !confirmNoStorage()) {
+    e.target.checked = true;
+    return;
+  }
+
+  cloudUploadEnabled = e.target.checked;
+  localStorage.setItem('cloudUploadEnabled', cloudUploadEnabled);
+  updateNoStorageWarning();
+});
+
 // Local backup toggle handler
 localBackupToggle.addEventListener('change', (e) => {
+  if (!e.target.checked && !cloudUploadEnabled && !confirmNoStorage()) {
+    e.target.checked = true;
+    return;
+  }
+
   localBackupEnabled = e.target.checked;
+  updateNoStorageWarning();
   localStorage.setItem('localBackupEnabled', localBackupEnabled);
   
   if (localBackupEnabled) {
@@ -252,6 +292,12 @@ async function init() {
     
     eventData = await response.json();
     document.getElementById('eventTitle').textContent = eventData.name;
+
+    // Continue numbering from the higher of server count and this device's count
+    localPhotoCounter = Math.max(
+      eventData.photoCounter || 0,
+      parseInt(localStorage.getItem(`photoCounter_${eventId}`), 10) || 0
+    );
     
     // Initialize camera
     await initCamera();
@@ -1272,9 +1318,12 @@ confirmPrintBtn.addEventListener('click', async () => {
       mode !== 'strip' ? getCardBlob(frame, cardPhotoIndex) : null
     ]);
 
+    // Each photo set takes the next file number (first print only)
+    const fileNumber = isInitial ? takeNextFileNumber() : null;
+
     // Save to local folder if enabled (single 2x6 inch) - first print only
     if (isInitial && localBackupEnabled && window.backupDirHandle) {
-      const fileName = `${eventData.filePrefix}_${String(eventData.photoCounter + 1).padStart(4, '0')}`;
+      const fileName = `${eventData.filePrefix}_${String(fileNumber).padStart(4, '0')}`;
       await saveToLocalFolder(stripBlob, fileName);
     }
 
@@ -1287,9 +1336,14 @@ confirmPrintBtn.addEventListener('click', async () => {
     closePrintModal();
 
     if (isInitial) {
-      // Show success and start background upload (once per photo set)
       showSuccess();
-      uploadPhotosInBackground(capturedPhotos, selectedFrameId, eventData.cardEnabled ? cardPhotoIndex : null);
+
+      if (cloudUploadEnabled) {
+        // Start background upload (once per photo set)
+        uploadPhotosInBackground(capturedPhotos, selectedFrameId, eventData.cardEnabled ? cardPhotoIndex : null, fileNumber);
+      } else {
+        showUploadSkippedStatus();
+      }
     }
   } catch (error) {
     console.error('Print error:', error);
@@ -1344,8 +1398,35 @@ function handlePrintModalKey(e) {
   }
 }
 
+// Reserve the next file number for a new photo set (remembered per event on this device)
+function takeNextFileNumber() {
+  localPhotoCounter++;
+  saveLocalPhotoCounter();
+  return localPhotoCounter;
+}
+
+function saveLocalPhotoCounter() {
+  try {
+    localStorage.setItem(`photoCounter_${eventId}`, localPhotoCounter);
+  } catch (error) {
+    // Storage unavailable - numbering continues for this page only
+  }
+}
+
+// Success screen status when cloud upload is turned off
+function showUploadSkippedStatus() {
+  const statusIcon = document.getElementById('statusIcon');
+  const statusText = document.getElementById('statusText');
+  statusIcon.textContent = '✓';
+  statusIcon.style.background = 'var(--text-secondary)';
+  statusText.textContent = 'ไม่ได้อัพโหลด';
+  statusText.style.color = 'var(--text-primary)';
+  document.getElementById('statusDescription').style.display = 'none';
+  document.getElementById('statusNote').style.display = 'none';
+}
+
 // Upload photos in background
-async function uploadPhotosInBackground(photos, frameId, cardPhotoIndex) {
+async function uploadPhotosInBackground(photos, frameId, cardPhotoIndex, fileNumber) {
   const statusText = document.getElementById('statusText');
   const statusIcon = document.getElementById('statusIcon');
   const statusDescription = document.getElementById('statusDescription');
@@ -1363,12 +1444,22 @@ async function uploadPhotosInBackground(photos, frameId, cardPhotoIndex) {
       body: JSON.stringify({
         photos: photos,
         frameId: frameId,
-        cardPhotoIndex: cardPhotoIndex
+        cardPhotoIndex: cardPhotoIndex,
+        fileNumber: fileNumber
       })
     });
-    
+
     if (response.ok) {
       console.log('Photos uploaded successfully in background');
+
+      // Sync numbering in case another device moved the server counter ahead
+      const photoSet = await response.json();
+      const serverNumber = parseInt((photoSet.fileName.match(/(\d+)$/) || [])[1], 10);
+      if (serverNumber > localPhotoCounter) {
+        localPhotoCounter = serverNumber;
+        saveLocalPhotoCounter();
+      }
+
       // แสดงสถานะสำเร็จ
       statusIcon.textContent = '✓';
       statusIcon.style.background = 'var(--success)';
