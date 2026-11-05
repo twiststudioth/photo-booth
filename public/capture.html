@@ -4,12 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ถ่ายรูป - Photo Booth</title>
+  <script>try{if(localStorage.getItem('theme')==='dark')document.documentElement.dataset.theme='dark'}catch(e){}</script>
   <link rel="preconnect" href="https://res.cloudinary.com">
   <link rel="dns-prefetch" href="https://res.cloudinary.com">
-  <link rel="stylesheet" href="/fonts/pridi.css">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="preload" href="/fonts/anuphan-thai.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/anuphan-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css?v=3">
 </head>
-<body>
+<body class="page-capture">
   <div class="container">
     <div id="loadingScreen" class="loading-screen">
       <div class="spinner"></div>
@@ -17,31 +19,45 @@
     </div>
 
     <div id="captureScreen" style="display: none;">
-      <header class="capture-header">
-        <h1 id="eventTitle">ถ่ายรูป</h1>
-        <div class="photo-counter">
-          <span id="currentPhoto">1</span> / 3
+      <header class="app-bar">
+        <div class="brand">
+          <span class="brand-mark">t</span>
+          <span class="brand-text">
+            <small>TWIST PHOTOBOOTH</small>
+            <strong id="eventTitle">ถ่ายรูป</strong>
+          </span>
+        </div>
+        <ol class="stepper" aria-label="ขั้นตอน">
+          <li class="is-active" aria-current="step">1 ถ่ายรูป</li>
+          <li>2 เลือกกรอบ</li>
+          <li>3 ปริ้น</li>
+        </ol>
+        <div class="app-bar-actions">
+          <button type="button" class="theme-toggle" data-theme-toggle aria-label="สลับโหมดสว่าง/มืด">
+            <svg class="icon-moon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <svg class="icon-sun" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          </button>
         </div>
       </header>
 
       <div class="capture-content">
-        <div class="capture-layout">
-          <div class="capture-left">
+        <div class="capture-main">
+          <div class="camera-stage">
             <div class="camera-container">
               <video id="video" autoplay playsinline></video>
               <canvas id="livePreview" class="live-preview" style="display: none;"></canvas>
               <canvas id="canvas" style="display: none;"></canvas>
-              
+
               <div id="countdown" class="countdown" style="display: none;">
                 <div class="countdown-number">3</div>
               </div>
-              
+
               <div id="cameraControls" class="camera-controls">
-                <select id="cameraSelect" class="camera-select">
+                <select id="cameraSelect" class="camera-select" aria-label="เลือกกล้อง">
                   <option value="">เลือกกล้อง...</option>
                 </select>
-                <button id="flipCameraBtn" class="btn-flip-camera" title="สลับกล้อง" style="display: none;">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <button id="flipCameraBtn" class="btn-flip-camera" type="button" title="สลับกล้อง" aria-label="สลับกล้อง" style="display: none;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M17 1l4 4-4 4"/>
                     <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
                     <path d="M7 23l-4-4 4-4"/>
@@ -50,167 +66,174 @@
                 </button>
               </div>
             </div>
+
+            <div class="preview-container" id="previewContainer" style="display: none;">
+              <img id="preview" alt="Preview">
+              <div class="preview-actions">
+                <button id="retakeBtn" class="btn btn-secondary btn-action">ถ่ายใหม่ <kbd>R</kbd></button>
+                <button id="nextBtn" class="btn btn-primary btn-action">ถัดไป <kbd>Enter</kbd> →</button>
+              </div>
+            </div>
           </div>
 
+          <div class="filter-strip" role="group" aria-label="ฟิลเตอร์">
+            <button type="button" class="filter-btn active" data-filter="none">ปกติ</button>
+            <button type="button" class="filter-btn" data-filter="bw">ขาวดำ</button>
+            <button type="button" class="filter-btn" data-filter="sepia">เซเปีย</button>
+            <button type="button" class="filter-btn" data-filter="vintage">วินเทจ</button>
+            <button type="button" class="filter-btn" data-filter="cool">เย็น</button>
+            <button type="button" class="filter-btn" data-filter="warm">อบอุ่น</button>
+            <button type="button" class="filter-btn" data-filter="brighten">ผิวขาว</button>
+            <button type="button" class="filter-btn" data-filter="soft">ละมุน</button>
+            <button type="button" class="filter-btn" data-filter="film">ฟิล์ม</button>
+            <button type="button" class="filter-btn" data-filter="pink">ชมพูหวาน</button>
+            <button type="button" class="filter-btn" data-filter="vivid">สดใส</button>
+          </div>
         </div>
 
-        <!-- Floating Toggle Button -->
-        <button id="toggleAdjustmentBtn" class="btn-floating-adjustment">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/>
-          </svg>
-        </button>
-
-        <!-- Overlay Adjustment Panel -->
-        <div class="adjustment-overlay" id="adjustmentOverlay">
-          <div class="adjustment-panel-floating">
-            <div class="adjustment-header">
-              <h3>ปรับแต่งภาพ</h3>
-              <button id="resetAdjustmentsBtn" class="btn-reset" title="รีเซ็ต">↻</button>
+        <aside class="capture-side">
+          <section class="panel" aria-label="ช็อต">
+            <div class="shot-head">
+              <span>ช็อตที่</span>
+              <span class="photo-counter"><span id="currentPhoto">1</span><span class="photo-counter-total"> / 3</span></span>
             </div>
+            <div class="thumbnails" id="thumbnails"></div>
+          </section>
 
-            <!-- Beauty -->
-            <div class="adjustment-section adjustment-beauty">
-              <label class="adjustment-label">
-                ✨ โหมดบิวตี้ (หน้าเนียน)
+          <section class="panel quick-adjust" aria-label="ปรับด่วน">
+            <div class="adjustment-section">
+              <label class="adjustment-label" for="beautySlider">
+                โหมดบิวตี้ (หน้าเนียน)
                 <span id="beautyValue" class="adjustment-value">0</span>
               </label>
               <input type="range" id="beautySlider" class="adjustment-slider" min="0" max="100" value="0" step="1">
             </div>
-
-            <!-- Filters -->
             <div class="adjustment-section">
-              <label class="adjustment-label">ฟิลเตอร์</label>
-              <div class="filter-buttons">
-                <button class="filter-btn active" data-filter="none">ปกติ</button>
-                <button class="filter-btn" data-filter="bw">ขาวดำ</button>
-                <button class="filter-btn" data-filter="sepia">เซเปีย</button>
-                <button class="filter-btn" data-filter="vintage">วินเทจ</button>
-                <button class="filter-btn" data-filter="cool">เย็น</button>
-                <button class="filter-btn" data-filter="warm">อบอุ่น</button>
-                <button class="filter-btn" data-filter="brighten">ผิวขาว</button>
-                <button class="filter-btn" data-filter="soft">ละมุน</button>
-                <button class="filter-btn" data-filter="film">ฟิล์ม</button>
-                <button class="filter-btn" data-filter="pink">ชมพูหวาน</button>
-                <button class="filter-btn" data-filter="vivid">สดใส</button>
-              </div>
-            </div>
-
-            <!-- Brightness -->
-            <div class="adjustment-section">
-              <label class="adjustment-label">
+              <label class="adjustment-label" for="brightnessSlider">
                 ความสว่าง
                 <span id="brightnessValue" class="adjustment-value">0</span>
               </label>
               <input type="range" id="brightnessSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
             </div>
+            <button id="toggleAdjustmentBtn" type="button" class="btn-adjust-more" aria-controls="adjustmentOverlay">ตั้งค่าภาพเพิ่มเติม →</button>
+          </section>
 
-            <!-- Contrast -->
-            <div class="adjustment-section">
-              <label class="adjustment-label">
-                คอนทราสต์
-                <span id="contrastValue" class="adjustment-value">0</span>
+          <section class="panel local-backup-controls" aria-label="การบันทึก">
+            <div class="backup-toggle">
+              <label class="toggle-switch">
+                <input type="checkbox" id="cloudUploadToggle" checked>
+                <span class="toggle-slider"></span>
               </label>
-              <input type="range" id="contrastSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+              <span class="toggle-label">อัพโหลดขึ้น cloud</span>
             </div>
+            <div class="backup-toggle">
+              <label class="toggle-switch">
+                <input type="checkbox" id="localBackupToggle">
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="toggle-label">บันทึกลงเครื่อง</span>
+            </div>
+            <div class="backup-folder" id="backupFolderSection" style="display: none;">
+              <button id="selectFolderBtn" type="button" class="btn-select-folder">เลือก Folder</button>
+              <span id="selectedFolderPath" class="folder-path">ยังไม่ได้เลือก folder</span>
+            </div>
+            <p id="noStorageWarning" class="no-storage-warning" style="display: none;">ไม่ได้บันทึกลงเครื่องและไม่ได้อัพโหลด รูปจะมีแค่ที่ปริ้นออกมาเท่านั้น</p>
+          </section>
 
-            <!-- Temperature -->
-            <div class="adjustment-section">
-              <label class="adjustment-label">
-                อุณหภูมิสี (เย็น ↔ อุ่น)
-                <span id="temperatureValue" class="adjustment-value">0</span>
-              </label>
-              <input type="range" id="temperatureSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
-            </div>
-
-            <!-- Highlights -->
-            <div class="adjustment-section">
-              <label class="adjustment-label">
-                ส่วนสว่าง
-                <span id="highlightsValue" class="adjustment-value">0</span>
-              </label>
-              <input type="range" id="highlightsSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
-            </div>
-
-            <!-- Shadows -->
-            <div class="adjustment-section">
-              <label class="adjustment-label">
-                เงา
-                <span id="shadowValue" class="adjustment-value">0</span>
-              </label>
-              <input type="range" id="shadowSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
-            </div>
-
-            <!-- Saturation -->
-            <div class="adjustment-section">
-              <label class="adjustment-label">
-                ความอิ่มตัวสี
-                <span id="saturationValue" class="adjustment-value">0</span>
-              </label>
-              <input type="range" id="saturationSlider" class="adjustment-slider" min="-100" max="100" value="0" step="1">
-            </div>
-
-            <!-- Sharpness -->
-            <div class="adjustment-section">
-              <label class="adjustment-label">
-                ความคมชัด
-                <span id="sharpnessValue" class="adjustment-value">0</span>
-              </label>
-              <input type="range" id="sharpnessSlider" class="adjustment-slider" min="-100" max="100" value="0" step="1">
-            </div>
+          <div class="panel capture-actions" id="captureActions">
+            <button id="captureBtn" type="button" class="btn-shutter" aria-label="ถ่ายรูป">
+              <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
+            <span class="shutter-label">กดเพื่อถ่าย <kbd>Enter</kbd></span>
           </div>
-        </div>
-
-        <div class="preview-container" id="previewContainer" style="display: none;">
-          <img id="preview" alt="Preview">
-          <div class="preview-actions">
-            <button id="retakeBtn" class="btn btn-secondary btn-action">ถ่ายใหม่ <kbd>R</kbd></button>
-            <button id="nextBtn" class="btn btn-primary btn-action">ถัดไป <kbd>Enter</kbd> →</button>
-          </div>
-        </div>
-
-        <div class="capture-actions" id="captureActions">
-          <button id="captureBtn" class="btn btn-primary btn-action">
-            ถ่ายรูป <kbd>Enter</kbd>
-          </button>
-        </div>
-
-        <div class="thumbnails" id="thumbnails"></div>
+        </aside>
       </div>
 
-      <!-- Local Backup Controls -->
-      <div class="local-backup-controls">
-        <div class="backup-toggle">
-          <label class="toggle-switch">
-            <input type="checkbox" id="localBackupToggle">
-            <span class="toggle-slider"></span>
-          </label>
-          <span class="toggle-label">บันทึกลงเครื่อง</span>
+      <!-- Adjustment drawer -->
+      <div class="adjustment-overlay" id="adjustmentOverlay">
+        <div class="adjustment-panel-floating">
+          <div class="adjustment-header">
+            <h3>ปรับแต่งภาพ</h3>
+            <button id="resetAdjustmentsBtn" type="button" class="btn-reset" title="รีเซ็ตทั้งหมด" aria-label="รีเซ็ตทั้งหมด">↻</button>
+            <button id="closeAdjustmentBtn" type="button" class="btn-close-drawer" title="ปิด" aria-label="ปิด">&times;</button>
+          </div>
+
+          <div class="adjustment-section">
+            <label class="adjustment-label" for="contrastSlider">
+              คอนทราสต์
+              <span id="contrastValue" class="adjustment-value">0</span>
+            </label>
+            <input type="range" id="contrastSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+          </div>
+
+          <div class="adjustment-section">
+            <label class="adjustment-label" for="temperatureSlider">
+              อุณหภูมิสี (เย็น ↔ อุ่น)
+              <span id="temperatureValue" class="adjustment-value">0</span>
+            </label>
+            <input type="range" id="temperatureSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+          </div>
+
+          <div class="adjustment-section">
+            <label class="adjustment-label" for="highlightsSlider">
+              ส่วนสว่าง
+              <span id="highlightsValue" class="adjustment-value">0</span>
+            </label>
+            <input type="range" id="highlightsSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+          </div>
+
+          <div class="adjustment-section">
+            <label class="adjustment-label" for="shadowSlider">
+              เงา
+              <span id="shadowValue" class="adjustment-value">0</span>
+            </label>
+            <input type="range" id="shadowSlider" class="adjustment-slider" min="-50" max="50" value="0" step="1">
+          </div>
+
+          <div class="adjustment-section">
+            <label class="adjustment-label" for="saturationSlider">
+              ความอิ่มตัวสี
+              <span id="saturationValue" class="adjustment-value">0</span>
+            </label>
+            <input type="range" id="saturationSlider" class="adjustment-slider" min="-100" max="100" value="0" step="1">
+          </div>
+
+          <div class="adjustment-section">
+            <label class="adjustment-label" for="sharpnessSlider">
+              ความคมชัด
+              <span id="sharpnessValue" class="adjustment-value">0</span>
+            </label>
+            <input type="range" id="sharpnessSlider" class="adjustment-slider" min="-100" max="100" value="0" step="1">
+          </div>
         </div>
-        <div class="backup-folder" id="backupFolderSection" style="display: none;">
-          <button id="selectFolderBtn" class="btn-select-folder">📁 เลือก Folder</button>
-          <span id="selectedFolderPath" class="folder-path">ยังไม่ได้เลือก folder</span>
-        </div>
-        <div class="backup-toggle">
-          <label class="toggle-switch">
-            <input type="checkbox" id="cloudUploadToggle" checked>
-            <span class="toggle-slider"></span>
-          </label>
-          <span class="toggle-label">อัพโหลดขึ้น cloud</span>
-        </div>
-        <p id="noStorageWarning" class="no-storage-warning" style="display: none;">⚠️ ไม่ได้บันทึกลงเครื่องและไม่ได้อัพโหลด รูปจะมีแค่ที่ปริ้นออกมาเท่านั้น</p>
       </div>
     </div>
 
     <div id="frameSelectionScreen" style="display: none;">
-      <header class="capture-header">
-        <h1>เลือกกรอบรูป</h1>
+      <header class="app-bar">
+        <div class="brand">
+          <span class="brand-mark">t</span>
+          <span class="brand-text">
+            <small>TWIST PHOTOBOOTH</small>
+            <strong>เลือกกรอบรูป</strong>
+          </span>
+        </div>
+        <ol class="stepper" aria-label="ขั้นตอน">
+          <li class="is-done">1 ถ่ายรูป</li>
+          <li class="is-active" aria-current="step">2 เลือกกรอบ</li>
+          <li>3 ปริ้น</li>
+        </ol>
+        <div class="app-bar-actions">
+          <button type="button" class="theme-toggle" data-theme-toggle aria-label="สลับโหมดสว่าง/มืด">
+            <svg class="icon-moon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <svg class="icon-sun" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          </button>
+        </div>
       </header>
 
       <div class="frame-selection-content">
         <div class="keyboard-hint">
-          <span>💡 ใช้ลูกศร <kbd>←</kbd> <kbd>→</kbd> เพื่อเลือกกรอบ หรือกดเลข <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> ...</span>
+          <span>ใช้ลูกศร <kbd>←</kbd> <kbd>→</kbd> เพื่อเลือกกรอบ หรือกดเลข <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> ...</span>
         </div>
         <div class="frames-grid-container">
           <div id="framesGridWithPreview" class="frames-grid-with-preview"></div>
@@ -236,7 +259,7 @@
         </div>
       </div>
     </div>
-    
+
     <footer class="app-footer">
       <div class="footer-content">
         <div class="footer-logo">
@@ -256,7 +279,7 @@
           </a>
           <a href="https://www.tiktok.com/@twist.studio.th" target="_blank" rel="noopener noreferrer" aria-label="TikTok" class="social-link">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1 .1z"/>
             </svg>
           </a>
         </div>
@@ -272,7 +295,7 @@
       </div>
 
       <div class="keyboard-hint">
-        <span id="cardKeyHint">💡 <kbd>←</kbd> <kbd>→</kbd> หรือ <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> เลือกรูปการ์ด · </span>
+        <span id="cardKeyHint"><kbd>←</kbd> <kbd>→</kbd> หรือ <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> เลือกรูปการ์ด · </span>
         <span><kbd>↑</kbd> <kbd>↓</kbd> หรือ <kbd>+</kbd> <kbd>−</kbd> เพิ่ม/ลดจำนวน · <kbd>Enter</kbd> ปริ้น · <kbd>Esc</kbd> กลับ</span>
       </div>
 
@@ -292,7 +315,7 @@
           <div>
             <label class="print-option-label">เลือกรูปที่จะแสดงบนการ์ด</label>
             <div id="cardPhotoPicker" class="card-photo-picker"></div>
-            <p id="noCardFrameNotice" class="no-card-notice" style="display: none;">⚠️ กรอบนี้ยังไม่มีกรอบการ์ดอวยพร จะใช้พื้นขาวแทน</p>
+            <p id="noCardFrameNotice" class="no-card-notice" style="display: none;">กรอบนี้ยังไม่มีกรอบการ์ดอวยพร จะใช้พื้นขาวแทน</p>
           </div>
         </div>
       </div>
@@ -317,6 +340,7 @@
 
   <script src="/print-layout.js"></script>
   <script src="/image-pipeline.js"></script>
-  <script src="/capture.js"></script>
+  <script src="/capture.js?v=2"></script>
+  <script src="/theme.js?v=2" defer></script>
 </body>
 </html>

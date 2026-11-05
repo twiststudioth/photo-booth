@@ -26,6 +26,17 @@ const createEventModal = document.getElementById('createEventModal');
 const eventDetailModal = document.getElementById('eventDetailModal');
 const createEventForm = document.getElementById('createEventForm');
 
+// Inline stroke icons (inherit text color)
+const svgIcon = (paths) => `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+const ICONS = {
+  camera: svgIcon('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
+  gallery: svgIcon('<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>'),
+  edit: svgIcon('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  trash: svgIcon('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>'),
+  upload: svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>'),
+  layers: svgIcon('<path d="M12 2l10 6-10 6L2 8z"/><path d="M2 16l10 6 10-6"/>')
+};
+
 // Check auth on load
 if (authToken) {
   showAdminPanel();
@@ -104,10 +115,10 @@ async function loadEvents() {
         <p>${new Date(event.createdAt).toLocaleDateString('th-TH')}</p>
         <div class="event-card-actions">
           <button class="btn-icon btn-capture" data-event-id="${event.id}" title="เปิดหน้าถ่ายรูป">
-            📸
+            ${ICONS.camera} ถ่ายรูป
           </button>
           <button class="btn-icon btn-gallery" data-event-id="${event.id}" title="เปิดแกลเลอรี่">
-            🖼️
+            ${ICONS.gallery} แกลเลอรี่
           </button>
         </div>
       `;
@@ -230,17 +241,17 @@ function renderFramesList(event) {
       frameDiv.className = 'frame-item';
 
       // Add overlay badge if frame has overlay
-      const overlayBadge = frame.overlayPath ? '<span class="overlay-badge" title="มี Overlay">🎭</span>' : '';
+      const overlayBadge = frame.overlayPath ? `<span class="overlay-badge" title="มี Overlay">${ICONS.layers}</span>` : '';
 
       frameDiv.innerHTML = `
         <img src="${frame.path}" alt="${frame.name}">
         ${overlayBadge}
         <div class="frame-item-actions">
-          <button class="frame-edit-btn" data-frame-id="${frame.id}" title="แก้ไขกรอบ">
-            ✏️
+          <button class="frame-edit-btn" data-frame-id="${frame.id}" title="แก้ไขกรอบ" aria-label="แก้ไขกรอบ">
+            ${ICONS.edit}
           </button>
-          <button class="frame-delete-btn" data-frame-id="${frame.id}" title="ลบกรอบ">
-            🗑️
+          <button class="frame-delete-btn" data-frame-id="${frame.id}" title="ลบกรอบ" aria-label="ลบกรอบ">
+            ${ICONS.trash}
           </button>
         </div>
       `;
@@ -253,7 +264,7 @@ function renderFramesList(event) {
       // Card frame of the same set
       const cardDiv = document.createElement('div');
       cardDiv.className = 'frame-item';
-      const cardOverlayBadge = frame.cardOverlayPath ? '<span class="overlay-badge" title="มี Overlay">🎭</span>' : '';
+      const cardOverlayBadge = frame.cardOverlayPath ? `<span class="overlay-badge" title="มี Overlay">${ICONS.layers}</span>` : '';
       cardDiv.innerHTML = `
         ${frame.cardPath
           ? `<img src="${frame.cardPath}" alt="การ์ด ${frame.name}">`
@@ -261,15 +272,15 @@ function renderFramesList(event) {
         ${cardOverlayBadge}
         <span class="frame-item-tag">การ์ด</span>
         <div class="frame-item-actions">
-          <button class="frame-upload-btn" data-frame-id="${frame.id}" title="อัพโหลดกรอบการ์ด">
-            📤
+          <button class="frame-upload-btn" data-frame-id="${frame.id}" title="อัพโหลดกรอบการ์ด" aria-label="อัพโหลดกรอบการ์ด">
+            ${ICONS.upload}
           </button>
-          <button class="frame-edit-btn" data-frame-id="${frame.id}" data-card="true" title="${frame.cardPath ? 'แก้ไขกรอบการ์ด' : 'สร้างกรอบการ์ด'}">
-            ✏️
+          <button class="frame-edit-btn" data-frame-id="${frame.id}" data-card="true" title="${frame.cardPath ? 'แก้ไขกรอบการ์ด' : 'สร้างกรอบการ์ด'}" aria-label="${frame.cardPath ? 'แก้ไขกรอบการ์ด' : 'สร้างกรอบการ์ด'}">
+            ${ICONS.edit}
           </button>
           ${frame.cardPath ? `
-          <button class="frame-delete-btn" data-frame-id="${frame.id}" data-card="true" title="ลบกรอบการ์ด">
-            🗑️
+          <button class="frame-delete-btn" data-frame-id="${frame.id}" data-card="true" title="ลบกรอบการ์ด" aria-label="ลบกรอบการ์ด">
+            ${ICONS.trash}
           </button>` : ''}
         </div>
       `;
@@ -792,13 +803,13 @@ function updateOverlayList() {
     
     const btnResize = document.createElement('button');
     btnResize.className = 'btn-icon-small';
-    btnResize.textContent = '🔍';
+    btnResize.textContent = '⤢';
     btnResize.title = 'ปรับขนาด';
     btnResize.onclick = () => resizeOverlay(index);
     
     const btnDelete = document.createElement('button');
     btnDelete.className = 'btn-icon-small';
-    btnDelete.textContent = '🗑️';
+    btnDelete.textContent = '✕';
     btnDelete.title = 'ลบ';
     btnDelete.onclick = () => deleteOverlay(index);
     
@@ -926,7 +937,7 @@ function updateTextList() {
     
     const btnDelete = document.createElement('button');
     btnDelete.className = 'btn-icon-small';
-    btnDelete.textContent = '🗑️';
+    btnDelete.textContent = '✕';
     btnDelete.title = 'ลบ';
     btnDelete.dataset.index = index;
     btnDelete.dataset.action = 'delete';
