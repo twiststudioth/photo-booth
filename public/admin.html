@@ -4,14 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Panel - Photo Booth</title>
+  <script>try{if(localStorage.getItem('theme')==='dark')document.documentElement.dataset.theme='dark'}catch(e){}</script>
   <link rel="preconnect" href="https://res.cloudinary.com">
   <link rel="dns-prefetch" href="https://res.cloudinary.com">
+  <link rel="preload" href="/fonts/anuphan-thai.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/anuphan-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <!-- Pridi is still offered as a text font in the frame editor -->
   <link rel="stylesheet" href="/fonts/pridi.css">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=3">
 </head>
-<body>
+<body class="page-admin">
   <div id="loginScreen" class="container">
     <div class="login-box">
+      <a href="/" class="brand">
+        <span class="brand-mark">t</span>
+        <span class="brand-name">twist<span> photobooth</span></span>
+      </a>
       <h1>เข้าสู่ระบบผู้ดูแล</h1>
       <form id="loginForm">
         <div class="form-group">
@@ -31,8 +39,20 @@
 
   <div id="adminPanel" class="container" style="display: none;">
     <header class="admin-header">
-      <h1>Admin Panel</h1>
-      <button id="logoutBtn" class="btn btn-secondary">ออกจากระบบ</button>
+      <div class="brand">
+        <span class="brand-mark">t</span>
+        <span class="brand-text">
+          <small>TWIST PHOTOBOOTH</small>
+          <strong>Admin Panel</strong>
+        </span>
+      </div>
+      <div class="app-bar-actions">
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="สลับโหมดสว่าง/มืด">
+          <svg class="icon-moon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-sun" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+        <button id="logoutBtn" class="btn btn-secondary">ออกจากระบบ</button>
+      </div>
     </header>
 
     <div class="admin-content">
@@ -121,7 +141,7 @@
             <input type="file" id="frameUpload" accept="image/*" style="display: none;">
             <input type="file" id="cardUpload" accept="image/*" style="display: none;">
             <button id="uploadFrameBtn" class="btn btn-primary">+ อัพโหลดกรอบ</button>
-            <button id="createFrameBtn" class="btn btn-primary">🎨 สร้างกรอบใหม่</button>
+            <button id="createFrameBtn" class="btn btn-primary">สร้างกรอบใหม่</button>
           </div>
           <div id="framesList" class="frames-grid"></div>
         </div>
@@ -144,12 +164,12 @@
           <h3>เครื่องมือ</h3>
           
           <div class="tool-section">
-            <h4>📐 ขนาดกรอบ (Fixed)</h4>
+            <h4>ขนาดกรอบ (Fixed)</h4>
             <p class="tool-info">600 x 1800 px (2x6")</p>
           </div>
 
           <div class="tool-section">
-            <h4>📸 แสดงพื้นที่รูป</h4>
+            <h4>แสดงพื้นที่รูป</h4>
             <label>
               <input type="checkbox" id="showPhotoAreas" checked> <span id="showPhotoAreasLabel">แสดงตำแหน่งรูป 3 แอค</span>
             </label>
@@ -157,20 +177,20 @@
           </div>
 
           <div class="tool-section">
-            <h4>🎨 สีพื้นหลัง</h4>
+            <h4>สีพื้นหลัง</h4>
             <input type="color" id="bgColor" value="#ffffff">
             <button id="bgTransparent" class="btn btn-small">โปร่งใส</button>
           </div>
 
           <div class="tool-section">
-            <h4>🖼️ รูปพื้นหลัง</h4>
+            <h4>รูปพื้นหลัง</h4>
             <input type="file" id="bgImageUpload" accept="image/*" style="display: none;">
             <button id="uploadBgImageBtn" class="btn btn-small">เลือกรูป</button>
             <button id="clearBgImageBtn" class="btn btn-small">ลบรูป</button>
           </div>
 
           <div class="tool-section">
-            <h4>🎭 เพิ่ม Overlay (โลโก้/กรอบ)</h4>
+            <h4>เพิ่ม Overlay (โลโก้/กรอบ)</h4>
             <p class="tool-info">รองรับขนาดเต็มกรอบ 600x1800px</p>
             <input type="file" id="overlayImageUpload" accept="image/*" style="display: none;">
             <button id="uploadOverlayBtn" class="btn btn-primary">เลือกรูป Overlay</button>
@@ -178,7 +198,7 @@
           </div>
 
           <div class="tool-section">
-            <h4>✏️ เพิ่มข้อความ</h4>
+            <h4>เพิ่มข้อความ</h4>
             <input type="text" id="textInput" placeholder="พิมพ์ข้อความ...">
             <div class="text-controls">
               <label>สี:</label>
@@ -210,13 +230,13 @@
           </div>
 
           <div class="tool-section">
-            <h4>📝 ข้อความที่เพิ่ม</h4>
+            <h4>ข้อความที่เพิ่ม</h4>
             <div id="textList"></div>
           </div>
 
           <div class="tool-section">
-            <button id="saveFrameBtn" class="btn btn-success">💾 บันทึกกรอบ</button>
-            <button id="clearCanvasBtn" class="btn btn-secondary">🗑️ ล้างทั้งหมด</button>
+            <button id="saveFrameBtn" class="btn btn-success">บันทึกกรอบ</button>
+            <button id="clearCanvasBtn" class="btn btn-secondary">ล้างทั้งหมด</button>
           </div>
         </div>
 
@@ -253,6 +273,7 @@
     </div>
   </footer>
 
-  <script src="/admin.js"></script>
+  <script src="/admin.js?v=2"></script>
+  <script src="/theme.js?v=2" defer></script>
 </body>
 </html>

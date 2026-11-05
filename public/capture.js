@@ -347,7 +347,7 @@ async function initCamera() {
     if (flipBtn) {
       // Always show flip button on mobile, or when multiple cameras detected
       if (isMobile || videoDevices.length > 1) {
-        flipBtn.style.display = 'block';
+        flipBtn.style.display = '';
       } else {
         flipBtn.style.display = 'none';
       }
@@ -394,6 +394,12 @@ function initImageAdjustments() {
   toggleBtn.addEventListener('click', () => {
     const isVisible = adjustmentOverlay.classList.toggle('show');
     toggleBtn.classList.toggle('active', isVisible);
+  });
+
+  // Drawer covers the toggle button, so it has its own close button
+  document.getElementById('closeAdjustmentBtn').addEventListener('click', () => {
+    adjustmentOverlay.classList.remove('show');
+    toggleBtn.classList.remove('active');
   });
 
   // Sliders
@@ -965,7 +971,7 @@ function playBeep(frequency = 600, duration = 200) {
 // Retake photo
 retakeBtn.addEventListener('click', () => {
   video.style.display = 'block';
-  document.getElementById('cameraControls').style.display = 'block';
+  document.getElementById('cameraControls').style.display = '';
   document.getElementById('captureActions').style.display = 'flex';
   previewContainer.style.display = 'none';
 });
@@ -981,7 +987,7 @@ nextBtn.addEventListener('click', () => {
     // Continue to next photo
     currentPhotoSpan.textContent = currentPhotoIndex + 1;
     video.style.display = 'block';
-    document.getElementById('cameraControls').style.display = 'block';
+    document.getElementById('cameraControls').style.display = '';
     document.getElementById('captureActions').style.display = 'flex';
     previewContainer.style.display = 'none';
   }
@@ -1243,7 +1249,7 @@ document.getElementById('backToPhotosBtn').addEventListener('click', () => {
 
     // Reset to camera view
     video.style.display = 'block';
-    document.getElementById('cameraControls').style.display = 'block';
+    document.getElementById('cameraControls').style.display = '';
     document.getElementById('captureActions').style.display = 'flex';
     previewContainer.style.display = 'none';
 
@@ -1582,7 +1588,7 @@ document.getElementById('takeMoreBtn').addEventListener('click', () => {
   
   // Reset to camera view
   video.style.display = 'block';
-  document.getElementById('cameraControls').style.display = 'block';
+  document.getElementById('cameraControls').style.display = '';
   document.getElementById('captureActions').style.display = 'flex';
   previewContainer.style.display = 'none';
   
