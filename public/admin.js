@@ -3,6 +3,19 @@
 let authToken = localStorage.getItem('authToken') || '';
 let currentEvent = null;
 
+// Database (Supabase) status - ใช้ใน checkDbStatus/wakeDb
+const DB_STATUS_TEXT = {
+  checking: 'กำลังเช็คระบบ...',
+  active: 'ระบบพร้อมใช้งาน',
+  paused: 'ระบบหลับอยู่',
+  waking: 'กำลังปลุกระบบ...',
+  unknown: 'ไม่ทราบสถานะระบบ',
+  error: 'ระบบมีปัญหา'
+};
+const DB_POLL_MS = 15000;
+let dbPollTimer = null;
+let lastDbState = null;
+
 // SHA256 hash function
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
@@ -88,8 +101,79 @@ logoutBtn.addEventListener('click', () => {
 async function showAdminPanel() {
   loginScreen.style.display = 'none';
   adminPanel.style.display = 'block';
+  checkDbStatus();
   await loadEvents();
 }
+
+// ---------- Database (Supabase) status ----------
+// (ค่าคงที่/ตัวแปรของส่วนนี้ประกาศไว้ด้านบนไฟล์ เพราะ showAdminPanel ถูกเรียกตั้งแต่ตอนโหลด)
+function renderDbStatus(status) {
+  const box = document.getElementById('dbStatus');
+  const text = document.getElementById('dbStatusText');
+  const wakeBtn = document.getElementById('dbWakeBtn');
+  const link = document.getElementById('dbDashboardLink');
+
+  box.dataset.state = status.state;
+  text.textContent = DB_STATUS_TEXT[status.state] || DB_STATUS_TEXT.unknown;
+  box.title = status.message || '';
+  wakeBtn.hidden = !status.canWake;
+  if (status.dashboardUrl) link.href = status.dashboardUrl;
+  link.hidden = !(status.state === 'error' || status.state === 'unknown');
+}
+
+async function checkDbStatus() {
+  clearTimeout(dbPollTimer);
+  let status;
+  try {
+    const response = await fetch('/api/admin/db-status', {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    status = response.ok
+      ? await response.json()
+      : { state: 'error', message: `เช็คสถานะไม่สำเร็จ (${response.status})` };
+  } catch (error) {
+    status = { state: 'error', message: 'เชื่อมต่อ server ไม่ได้' };
+  }
+  renderDbStatus(status);
+
+  // เพิ่งตื่นจากการปลุก -> โหลดอีเว้นท์ใหม่
+  if (lastDbState === 'waking' && status.state === 'active') {
+    loadEvents();
+  }
+  lastDbState = status.state;
+
+  // เช็คซ้ำเฉพาะตอนกำลังปลุก
+  if (status.state === 'waking') {
+    dbPollTimer = setTimeout(checkDbStatus, DB_POLL_MS);
+  }
+}
+
+async function wakeDb() {
+  const wakeBtn = document.getElementById('dbWakeBtn');
+  wakeBtn.disabled = true;
+  try {
+    const response = await fetch('/api/admin/db-wake', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      renderDbStatus({ state: 'error', message: result.message, dashboardUrl: result.dashboardUrl });
+      alert(`${result.message || 'ปลุกระบบไม่สำเร็จ'}\nลองกด Restore ใน Supabase Dashboard แทน`);
+      return;
+    }
+    renderDbStatus({ state: 'waking' });
+    lastDbState = 'waking';
+    dbPollTimer = setTimeout(checkDbStatus, DB_POLL_MS);
+  } catch (error) {
+    alert('เชื่อมต่อ server ไม่ได้');
+  } finally {
+    wakeBtn.disabled = false;
+  }
+}
+
+document.getElementById('dbStatusRefresh').addEventListener('click', checkDbStatus);
+document.getElementById('dbWakeBtn').addEventListener('click', wakeDb);
 
 // Load events
 async function loadEvents() {
@@ -515,6 +599,140 @@ document.getElementById('deleteEventBtn').addEventListener('click', async () => 
     }
   } catch (error) {
     alert('เกิดข้อผิดพลาด');
+  }
+});
+
+// ---------- Archive event: ดาวน์โหลดทั้งงานลงเครื่อง แล้วลบออกจาก Cloudinary ----------
+const ARCHIVE_CONCURRENCY = 4;
+
+function safeName(name) {
+  return (name || 'event').replace(/[\\/:*?"<>|]+/g, '_').trim().slice(0, 80) || 'event';
+}
+
+function fileExt(url) {
+  const match = (url || '').match(/\.([a-z0-9]+)$/i);
+  return match ? match[1].toLowerCase() : 'jpg';
+}
+
+async function writeFile(dirHandle, name, blob) {
+  const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+document.getElementById('archiveEventBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('archiveEventBtn');
+  const originalText = btn.textContent;
+  const event = currentEvent;
+
+  if (!window.showDirectoryPicker) {
+    alert('ฟีเจอร์นี้ต้องใช้ Chrome หรือ Edge บนคอมพิวเตอร์');
+    return;
+  }
+
+  // 1) เลือกโฟลเดอร์ปลายทาง (จะสร้างโฟลเดอร์ย่อยชื่ออีเว้นท์ให้)
+  let rootDir;
+  try {
+    rootDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch (error) {
+    return; // ผู้ใช้กดยกเลิก
+  }
+
+  btn.disabled = true;
+  try {
+    const photosResponse = await fetch(`/api/events/${event.id}/photos`);
+    if (!photosResponse.ok) throw new Error('โหลดรายการรูปไม่สำเร็จ');
+    const photoSets = await photosResponse.json();
+
+    const eventDir = await rootDir.getDirectoryHandle(safeName(event.name), { create: true });
+
+    // รายการไฟล์ที่ต้องดาวน์โหลด (ไฟล์ต้นฉบับบน Cloudinary - ไม่ใช้ transformation)
+    const files = [];
+    for (const set of photoSets) {
+      if (set.composite) files.push({ url: set.composite, name: `${set.fileName}.${fileExt(set.composite)}` });
+      set.photos.forEach((url, i) => files.push({ url, name: `${set.fileName}_${i + 1}.${fileExt(url)}` }));
+    }
+    (event.frames || []).forEach((frame, i) => {
+      [['frame', frame.path], ['overlay', frame.overlayPath], ['card', frame.cardPath], ['card_overlay', frame.cardOverlayPath]]
+        .filter(([, url]) => url)
+        .forEach(([kind, url]) => files.push({ url, name: `frames/${i + 1}_${kind}.${fileExt(url)}` }));
+    });
+
+    const framesDir = files.some(f => f.name.startsWith('frames/'))
+      ? await eventDir.getDirectoryHandle('frames', { create: true })
+      : null;
+
+    // 2) ดาวน์โหลดทีละ ARCHIVE_CONCURRENCY ไฟล์
+    let done = 0;
+    const failed = [];
+    const queue = [...files];
+    const worker = async () => {
+      while (queue.length) {
+        const file = queue.shift();
+        try {
+          const response = await fetch(file.url);
+          if (!response.ok) throw new Error(response.status);
+          const blob = await response.blob();
+          if (file.name.startsWith('frames/')) {
+            await writeFile(framesDir, file.name.slice('frames/'.length), blob);
+          } else {
+            await writeFile(eventDir, file.name, blob);
+          }
+        } catch (error) {
+          failed.push(file.name);
+        }
+        done++;
+        btn.textContent = `กำลังดาวน์โหลด ${done}/${files.length}`;
+      }
+    };
+    await Promise.all(Array.from({ length: ARCHIVE_CONCURRENCY }, worker));
+
+    // เก็บข้อมูลอีเว้นท์ไว้ด้วย (ไม่รวม QR code)
+    const { qrCode, ...eventInfo } = event;
+    await writeFile(eventDir, 'event-info.json',
+      new Blob([JSON.stringify({ event: eventInfo, photoSets, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' }));
+
+    if (failed.length) {
+      alert(`ดาวน์โหลดไม่สำเร็จ ${failed.length} ไฟล์ จึงยังไม่ลบอะไร\nลองกดใหม่อีกครั้ง\n\n${failed.slice(0, 10).join('\n')}`);
+      return;
+    }
+
+    // 3) ยืนยันก่อนลบ - ต้องพิมพ์ชื่ออีเว้นท์
+    const typed = prompt(
+      `ดาวน์โหลดครบแล้ว ${photoSets.length} ชุด (${files.length} ไฟล์) ไว้ที่โฟลเดอร์ "${eventDir.name}"\n\n` +
+      `ถ้าต้องการลบอีเว้นท์นี้และไฟล์ทั้งหมดบน Cloudinary (ย้อนกลับไม่ได้) ให้พิมพ์ชื่ออีเว้นท์:\n${event.name}`
+    );
+    if (typed === null) {
+      showToast('ดาวน์โหลดเสร็จแล้ว ยังไม่ได้ลบ');
+      return;
+    }
+    if (typed.trim() !== (event.name || '').trim()) {
+      alert('ชื่อไม่ตรง ยังไม่ได้ลบ (ไฟล์ที่ดาวน์โหลดไว้ยังอยู่)');
+      return;
+    }
+
+    // 4) ลบไฟล์บน Cloudinary + ข้อมูลอีเว้นท์
+    btn.textContent = 'กำลังลบ...';
+    const purgeResponse = await fetch(`/api/events/${event.id}/purge`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const result = await purgeResponse.json().catch(() => ({}));
+    if (!purgeResponse.ok) {
+      alert(`ลบไม่สำเร็จ: ${result.message || purgeResponse.status}\nกดปุ่มนี้ซ้ำได้ (ไฟล์ที่ดาวน์โหลดไว้ยังอยู่)`);
+      return;
+    }
+
+    eventDetailModal.classList.remove('active');
+    showToast(`ลบอีเว้นท์แล้ว คืนพื้นที่ ${result.deleted} ไฟล์`);
+    await loadEvents();
+  } catch (error) {
+    console.error('Archive event failed:', error);
+    alert(`เกิดข้อผิดพลาด: ${error.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 });
 

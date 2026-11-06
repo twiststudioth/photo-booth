@@ -12,6 +12,7 @@ import sharp from 'sharp';
 import GIFEncoder from 'gif-encoder-2';
 import jwt from 'jsonwebtoken';
 import * as db from './lib/db.js';
+import { getProjectStatus, wakeProject } from './lib/supabase-status.js';
 
 // Load environment variables
 dotenv.config();
@@ -39,7 +40,8 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
       mediaSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
-      connectSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"]
+      // api.cloudinary.com: บูธอัพโหลดรูปตรงขึ้น Cloudinary (signed upload)
+      connectSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://api.cloudinary.com"]
     }
   }
 }));
@@ -85,10 +87,35 @@ const authMiddleware = (req, res, next) => {
 
 // API Routes
 
+// Login rate limit: ผิดได้ LOGIN_MAX_FAILS ครั้งต่อ IP ใน LOGIN_WINDOW_MIN นาที
+// เก็บใน Supabase เพราะบน Vercel แต่ละ request อาจรันคนละ instance (เก็บใน memory ไม่ได้ผล)
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_WINDOW_MIN = 15;
+
+function clientIp(req) {
+  return (req.headers['x-real-ip']
+    || (req.headers['x-forwarded-for'] || '').split(',')[0]
+    || req.socket.remoteAddress
+    || 'unknown').trim();
+}
+
 // Admin Login
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   const { username, password } = req.body;
-  
+  const ip = clientIp(req);
+
+  // ถ้าเช็คกับ DB ไม่ได้ (เช่น Supabase หลับ) ให้ผ่านไปก่อน - ไม่งั้นจะ login เข้าไปกดปลุกระบบไม่ได้
+  try {
+    if (await db.countFailedLogins(ip, LOGIN_WINDOW_MIN) >= LOGIN_MAX_FAILS) {
+      return res.status(429).json({
+        success: false,
+        message: `ใส่รหัสผิดเกิน ${LOGIN_MAX_FAILS} ครั้ง กรุณารอ ${LOGIN_WINDOW_MIN} นาทีแล้วลองใหม่`
+      });
+    }
+  } catch (error) {
+    console.error('Login rate limit check failed (allowing):', error.message);
+  }
+
   // Get credentials from environment variables
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
@@ -109,14 +136,31 @@ app.post('/api/admin/login', (req, res) => {
     res.json({ 
       success: true, 
       token: token,
-      message: 'Login successful' 
+      message: 'Login successful'
     });
+    db.clearFailedLogins(ip).catch(error => console.error('Clear login attempts failed:', error.message));
   } else {
-    res.status(401).json({ 
-      success: false, 
-      message: 'Invalid credentials' 
+    try {
+      await db.recordFailedLogin(ip);
+    } catch (error) {
+      console.error('Record login attempt failed:', error.message);
+    }
+    res.status(401).json({
+      success: false,
+      message: 'Invalid credentials'
     });
   }
+});
+
+// Database (Supabase) status - admin only
+app.get('/api/admin/db-status', authMiddleware, async (req, res) => {
+  res.json(await getProjectStatus());
+});
+
+// Wake a paused Supabase project - admin only
+app.post('/api/admin/db-wake', authMiddleware, async (req, res) => {
+  const result = await wakeProject();
+  res.status(result.ok ? 200 : 502).json(result);
 });
 
 // Get all events
@@ -181,6 +225,45 @@ app.put('/api/events/:id', authMiddleware, async (req, res) => {
     res.json(updatedEvent);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update event' });
+  }
+});
+
+// public_id จาก Cloudinary delivery URL (.../upload/v123/<public_id>.<ext>)
+function publicIdFromUrl(url) {
+  const match = typeof url === 'string' && url.match(/\/image\/upload\/(?:v\d+\/)?(.+)\.[a-z0-9]+$/i);
+  return match ? match[1] : null;
+}
+
+// ลบทั้งงาน: ไฟล์รูป + กรอบบน Cloudinary แล้วจึงลบข้อมูลใน DB (admin only)
+// เรียกหลังจากหน้า admin ดาวน์โหลดเก็บไว้ครบแล้ว
+app.delete('/api/events/:id/purge', authMiddleware, async (req, res) => {
+  try {
+    const event = await db.getEventById(req.params.id);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const photoSets = await db.getPhotosByEventId(event.id);
+    const urls = [
+      ...photoSets.flatMap(p => [...p.photos, p.composite]),
+      ...(event.frames || []).flatMap(f => [f.path, f.overlayPath, f.cardPath, f.cardOverlayPath])
+    ];
+    const publicIds = [...new Set(urls.map(publicIdFromUrl).filter(Boolean))];
+
+    // delete_resources รับได้ครั้งละ 100 (Admin API ~1 call ต่อ 100 ไฟล์)
+    let deleted = 0;
+    for (let i = 0; i < publicIds.length; i += 100) {
+      const result = await cloudinary.api.delete_resources(publicIds.slice(i, i + 100), { resource_type: 'image' });
+      deleted += Object.values(result.deleted || {}).filter(s => s === 'deleted').length;
+    }
+
+    // ลบ DB หลังลบไฟล์สำเร็จเท่านั้น (ถ้าพังกลางทาง กดซ้ำได้ - ไฟล์ที่ลบแล้วจะเป็น not_found)
+    await db.deleteEvent(event.id);
+
+    res.json({ success: true, photoSets: photoSets.length, files: publicIds.length, deleted });
+  } catch (error) {
+    console.error('Purge event error:', error);
+    res.status(500).json({ error: 'Failed to purge event', message: error.message || error.error?.message });
   }
 });
 
@@ -451,44 +534,63 @@ app.delete('/api/events/:eventId/frames/:frameId/card', authMiddleware, async (r
   }
 });
 
-// Save photo set (admin only)
+// รูปเดี่ยวทั้ง 3 ใบ: บูธอัพโหลดตรงขึ้น Cloudinary (ไม่ผ่าน Vercel ซึ่งรับ request ได้ไม่เกิน 4.5MB)
+// ใช้ incoming transformation เดิม (q_auto:best) ความชัดเท่าเดิม
+const PHOTO_UPLOAD_TRANSFORMATION = 'q_auto:best'; // ไม่ใส่ f_auto: ให้เก็บเป็น JPEG เสมอ (f_auto อาจแปลงเป็น PNG ไฟล์ใหญ่)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function photoSetFolderOf(photoSetId) {
+  const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
+  return `${cloudinaryFolder}/photos/${photoSetId}`;
+}
+
+// ขอลายเซ็นสำหรับอัพโหลด 3 รูปของชุดใหม่ (admin only)
+app.post('/api/events/:id/upload-signature', authMiddleware, (req, res) => {
+  const photoSetId = uuidv4();
+  const folder = photoSetFolderOf(photoSetId);
+  const timestamp = Math.round(Date.now() / 1000);
+  const { cloud_name, api_key, api_secret } = cloudinary.config();
+
+  const uploads = [1, 2, 3].map(n => {
+    const params = { folder, public_id: `photo_${n}`, timestamp, transformation: PHOTO_UPLOAD_TRANSFORMATION };
+    return { ...params, signature: cloudinary.utils.api_sign_request(params, api_secret) };
+  });
+
+  res.json({
+    photoSetId,
+    apiKey: api_key,
+    uploadUrl: `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`,
+    uploads
+  });
+});
+
+// Save photo set (admin only) - รับ URL ของรูปที่บูธอัพโหลดขึ้น Cloudinary แล้ว
 app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
   try {
-    const { photos, frameId, cardPhotoIndex, fileNumber } = req.body;
-    
-    if (!photos || photos.length !== 3) {
-      return res.status(400).json({ error: 'Must provide exactly 3 photos' });
+    const { photoSetId, photos, frameId, cardPhotoIndex, fileNumber } = req.body;
+
+    if (!UUID_RE.test(photoSetId || '') || !Array.isArray(photos) || photos.length !== 3) {
+      return res.status(400).json({ error: 'Must provide photoSetId and exactly 3 photo URLs' });
     }
-    
+
+    // รับเฉพาะ URL ของ cloud เรา ในโฟลเดอร์ของชุดนี้ ตามลำดับ photo_1..3
+    const photoSetFolder = photoSetFolderOf(photoSetId);
+    const cloudName = cloudinary.config().cloud_name;
+    const validUrl = (url, n) => typeof url === 'string'
+      && url.startsWith(`https://res.cloudinary.com/${cloudName}/image/upload/`)
+      && new RegExp(`/${photoSetFolder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/photo_${n}\\.[a-z0-9]+$`, 'i').test(url);
+    if (!photos.every((url, i) => validUrl(url, i + 1))) {
+      return res.status(400).json({ error: 'Invalid photo URLs' });
+    }
+
     const event = await db.getEventById(req.params.id);
-    
+
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
-    
-    // Increment counter - use the number the booth already gave this set (local file name)
-    // so both match; never go backwards (sets that were not uploaded still use up numbers)
-    const requestedNumber = Number.isInteger(fileNumber) ? fileNumber : 0;
-    event.photoCounter = Math.max((event.photoCounter || 0) + 1, requestedNumber);
-    const photoSetId = uuidv4();
-    const fileName = `${event.filePrefix}_${String(event.photoCounter).padStart(4, '0')}`;
-    
-    const cloudinaryFolder = (process.env.CLOUDINARY_FOLDER || 'photobooth').trim();
-    const photoSetFolder = `${cloudinaryFolder}/photos/${photoSetId}`;
-    
-    // Upload individual photos to Cloudinary with high quality
-    const savedPhotos = [];
-    for (let i = 0; i < photos.length; i++) {
-      const uploadResult = await cloudinary.uploader.upload(photos[i], {
-        folder: photoSetFolder,
-        public_id: `photo_${i + 1}`,
-        resource_type: 'image',
-        quality: 'auto:best', // คุณภาพสูงสุดสำหรับภาพขนาดใหญ่
-        fetch_format: 'auto'
-      });
-      savedPhotos.push(uploadResult.secure_url);
-    }
-    
+
+    const savedPhotos = photos;
+
     // Generate composite image with frame
     const frame = event.frames.find(f => f.id === frameId);
     let compositePath = null;
@@ -502,7 +604,13 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
     }
     
     // ไม่สร้าง GIF อัตโนมัติอีกต่อไป - จะสร้างเฉพาะตอน download
-    
+
+    // Next file number (atomic in DB) - use the number the booth already gave this set (local file name)
+    // so both match; never go backwards (sets that were not uploaded still use up numbers)
+    const requestedNumber = Number.isInteger(fileNumber) ? fileNumber : 0;
+    const photoCounter = await db.nextPhotoNumber(event.id, requestedNumber);
+    const fileName = `${event.filePrefix}_${String(photoCounter).padStart(4, '0')}`;
+
     // Save photo set data
     const photoSet = {
       id: photoSetId,
@@ -518,10 +626,7 @@ app.post('/api/events/:id/photos', authMiddleware, async (req, res) => {
     };
     
     await db.createPhoto(photoSet);
-    
-    // Update event counter
-    await db.updateEvent(event.id, { photoCounter: event.photoCounter });
-    
+
     res.json(photoSet);
   } catch (error) {
     console.error('Photo save error:', error);
@@ -679,7 +784,7 @@ async function generateCompositeImage(photoUrls, frameUrl, overlayUrl, cloudinar
     
     // Convert to JPEG
     compositeBuffer = await sharp(compositeBuffer)
-      .jpeg({ quality: 95, progressive: true })
+      .jpeg({ quality: 88, progressive: true }) // q88: ดูไม่ต่างจาก q95 (PSNR ~47dB) ไฟล์เล็กลง ~40%
       .toBuffer();
     
     // Upload composite to Cloudinary with high quality
@@ -688,8 +793,7 @@ async function generateCompositeImage(photoUrls, frameUrl, overlayUrl, cloudinar
       folder: cloudinaryFolder,
       public_id: 'composite',
       resource_type: 'image',
-      quality: 'auto:best',
-      fetch_format: 'auto'
+      quality: 'auto:best' // ไม่ใส่ fetch_format: ให้เก็บเป็น JPEG เสมอ
     });
     
     return uploadResult.secure_url;

@@ -11,7 +11,7 @@
   <link rel="preload" href="/fonts/anuphan-latin.woff2" as="font" type="font/woff2" crossorigin>
   <!-- Pridi is still offered as a text font in the frame editor -->
   <link rel="stylesheet" href="/fonts/pridi.css">
-  <link rel="stylesheet" href="/styles.css?v=4">
+  <link rel="stylesheet" href="/styles.css?v=5">
 </head>
 <body class="page-admin">
   <div id="loginScreen" class="container">
@@ -47,6 +47,14 @@
         </span>
       </div>
       <div class="app-bar-actions">
+        <div id="dbStatus" class="db-status" data-state="checking">
+          <button type="button" id="dbStatusRefresh" class="db-status-pill" title="กดเพื่อเช็คสถานะใหม่">
+            <span class="db-status-dot" aria-hidden="true"></span>
+            <span id="dbStatusText">กำลังเช็คระบบ...</span>
+          </button>
+          <button type="button" id="dbWakeBtn" class="btn btn-primary btn-small" hidden>ปลุกระบบ</button>
+          <a id="dbDashboardLink" class="db-status-link" href="https://supabase.com/dashboard" target="_blank" rel="noopener" hidden>เปิด Supabase</a>
+        </div>
         <button type="button" class="theme-toggle" data-theme-toggle aria-label="สลับโหมดสว่าง/มืด">
           <svg class="icon-moon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg class="icon-sun" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -147,6 +155,7 @@
         </div>
       </div>
       <div class="modal-actions">
+        <button id="archiveEventBtn" class="btn btn-secondary" title="ดาวน์โหลดรูปทั้งหมดลงเครื่อง แล้วลบไฟล์ออกจาก Cloudinary เพื่อคืนพื้นที่">ดาวน์โหลดทั้งงาน + ลบ</button>
         <button id="deleteEventBtn" class="btn btn-danger">ลบอีเว้นท์</button>
       </div>
     </div>
@@ -273,7 +282,7 @@
     </div>
   </footer>
 
-  <script src="/admin.js?v=2"></script>
+  <script src="/admin.js?v=3"></script>
   <script src="/theme.js?v=2" defer></script>
 </body>
 </html>
