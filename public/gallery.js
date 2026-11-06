@@ -284,6 +284,20 @@ document.querySelector('.next-btn').addEventListener('click', () => {
   }
 });
 
+// Swipe left/right on touch screens to change photo (disabled buttons ignore click())
+let touchStartX = null;
+const photoViewerEl = document.querySelector('.photo-viewer');
+photoViewerEl.addEventListener('touchstart', (e) => {
+  touchStartX = e.touches[0].clientX;
+}, { passive: true });
+photoViewerEl.addEventListener('touchend', (e) => {
+  if (touchStartX === null) return;
+  const deltaX = e.changedTouches[0].clientX - touchStartX;
+  touchStartX = null;
+  if (Math.abs(deltaX) < 50) return;
+  document.querySelector(deltaX < 0 ? '.next-btn' : '.prev-btn').click();
+});
+
 // Get photo array
 function getPhotoArray() {
   const photos = [];

@@ -2609,6 +2609,267 @@ kbd {
   }
 }
 
+/* Touch devices: keyboard shortcut hints are noise */
+@media (hover: none) and (pointer: coarse) {
+  kbd,
+  .keyboard-hint,
+  .shutter-label {
+    display: none !important;
+  }
+}
+
+/* ===== Mobile: gallery photo viewer goes edge-to-edge ===== */
+@media (max-width: 768px) {
+  .photo-viewer-modal.active {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .photo-viewer-modal .modal-content {
+    max-width: none;
+    max-height: none;
+    min-height: 100vh;
+    min-height: 100dvh;
+    border: none;
+    border-radius: 0;
+    padding: 64px 0 20px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .photo-viewer-modal .close-btn {
+    top: 12px;
+    right: 12px;
+  }
+
+  .photo-viewer {
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    gap: 0;
+    border-radius: 0;
+  }
+
+  .photo-display {
+    min-height: 50vh;
+  }
+
+  .photo-display img {
+    max-width: 100%;
+    max-height: 72vh;
+    max-height: 72dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Arrows float over the photo instead of taking width from it */
+  .photo-viewer .nav-btn {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    transform: translateY(-50%);
+    width: 40px;
+    height: 40px;
+    font-size: 26px;
+    border: none;
+    background: rgba(20, 21, 25, 0.45);
+    color: #FFFFFF;
+  }
+
+  .photo-viewer .prev-btn {
+    left: 8px;
+  }
+
+  .photo-viewer .next-btn {
+    right: 8px;
+  }
+
+  .photo-viewer .nav-btn:disabled {
+    opacity: 0;
+  }
+
+  .photo-viewer-modal .viewer-notice,
+  .photo-viewer-modal .viewer-actions {
+    padding: 0 16px;
+  }
+
+  .photo-viewer-modal .viewer-actions .btn {
+    flex: 1;
+    min-height: 48px;
+  }
+}
+
+/* ===== Mobile: capture page ===== */
+@media (max-width: 768px) {
+  /* Room for the fixed shutter bar */
+  .page-capture .container {
+    padding-bottom: 112px;
+  }
+
+  .page-capture .app-bar {
+    min-height: 56px;
+  }
+
+  .capture-content {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .camera-stage {
+    border-radius: 14px;
+  }
+
+  .camera-controls {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+  }
+
+  .filter-strip {
+    margin-top: 10px;
+    padding: 6px;
+    border-radius: 14px;
+  }
+
+  .filter-btn {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+
+  .capture-side {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .panel {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  /* Shutter docks at the bottom like a camera app */
+  .capture-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    margin: 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-radius: 20px 20px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -6px 24px rgba(16, 24, 40, 0.12);
+  }
+
+  .btn-shutter {
+    width: 72px;
+    height: 72px;
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+
+  .btn-shutter svg {
+    width: 30px;
+    height: 30px;
+  }
+
+  .preview-actions {
+    bottom: 10px;
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .preview-actions .btn-action {
+    flex: 1;
+    max-width: 180px;
+  }
+
+  .adjustment-panel-floating {
+    border-radius: 0;
+    padding: 20px 16px;
+  }
+
+  .frame-selection-content {
+    padding: 16px 12px 32px;
+  }
+
+  .frames-grid-with-preview {
+    gap: 12px;
+    padding: 4px;
+  }
+
+  .frame-preview-card {
+    width: calc(50% - 6px);
+    max-width: 180px;
+  }
+
+  .success-message {
+    margin: 24px 12px;
+    padding: 28px 20px;
+  }
+
+  .success-message .button-group .btn {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  .countdown-number {
+    width: 110px;
+    height: 110px;
+    font-size: 64px;
+  }
+}
+
+/* Phone held sideways: camera and controls side by side, fitted to the short height */
+@media (max-height: 520px) and (orientation: landscape) {
+  .page-capture .container {
+    padding-bottom: 0;
+  }
+
+  .page-capture .app-bar {
+    min-height: 48px;
+    padding: 4px 16px;
+  }
+
+  .page-capture .brand-mark {
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+  }
+
+  .capture-content {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    padding: 8px 12px;
+    gap: 12px;
+  }
+
+  .capture-main {
+    width: min(100%, calc((100vh - 48px - 16px - 58px) * 1.5));
+  }
+
+  .filter-strip {
+    margin-top: 6px;
+  }
+
+  .capture-side {
+    display: flex;
+    gap: 8px;
+  }
+
+  .capture-actions {
+    position: static;
+    order: -1;
+    padding: 10px;
+    border-radius: 16px;
+    border-bottom: 1px solid var(--line);
+    box-shadow: none;
+  }
+
+  .btn-shutter {
+    width: 64px;
+    height: 64px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
