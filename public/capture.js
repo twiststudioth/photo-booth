@@ -1440,7 +1440,29 @@ async function uploadPhotosInBackground(photos, frameId, cardPhotoIndex, fileNum
   
   try {
     statusText.textContent = 'กำลังอัพโหลด...';
-    
+
+    // 1) ขอลายเซ็นจาก server  2) อัพโหลดรูปเต็มตรงขึ้น Cloudinary  3) ส่งแค่ URL ให้ server
+    // (ไม่ส่งรูปผ่าน Vercel ซึ่งรับ request ได้ไม่เกิน 4.5MB - รูปยังคมชัดเท่าเดิม)
+    const signResponse = await fetch(`/api/events/${eventId}/upload-signature`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (!signResponse.ok) throw new Error(`Upload signature failed: ${signResponse.status}`);
+    const sign = await signResponse.json();
+
+    const photoUrls = await Promise.all(photos.map(async (dataUrl, i) => {
+      const form = new FormData();
+      form.append('file', await (await fetch(dataUrl)).blob());
+      form.append('api_key', sign.apiKey);
+      for (const [key, value] of Object.entries(sign.uploads[i])) {
+        form.append(key, value);
+      }
+      const uploadResponse = await fetch(sign.uploadUrl, { method: 'POST', body: form });
+      const result = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(`Cloudinary upload failed: ${result.error?.message || uploadResponse.status}`);
+      return result.secure_url;
+    }));
+
     const response = await fetch(`/api/events/${eventId}/photos`, {
       method: 'POST',
       headers: {
@@ -1448,7 +1470,8 @@ async function uploadPhotosInBackground(photos, frameId, cardPhotoIndex, fileNum
         'Authorization': `Bearer ${authToken}`
       },
       body: JSON.stringify({
-        photos: photos,
+        photoSetId: sign.photoSetId,
+        photos: photoUrls,
         frameId: frameId,
         cardPhotoIndex: cardPhotoIndex,
         fileNumber: fileNumber
