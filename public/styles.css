@@ -179,6 +179,11 @@ input[type="radio"] {
   height: 18px;
 }
 
+/* แอตทริบิวต์ hidden ต้องชนะ display ของคลาส (เช่น .btn ที่เป็น inline-flex) */
+[hidden] {
+  display: none !important;
+}
+
 /* ===== Buttons ===== */
 .btn {
   min-height: 44px;
@@ -1647,6 +1652,11 @@ kbd {
 }
 
 /* Photo viewer */
+/* กดปุ่มถัดไป/ก่อนหน้าเร็วๆ บนมือถือไม่ให้กลายเป็น double-tap zoom (ยังถ่างนิ้วซูมได้) */
+.photo-viewer-modal {
+  touch-action: manipulation;
+}
+
 .photo-viewer-modal .modal-content {
   padding: 24px;
 }
