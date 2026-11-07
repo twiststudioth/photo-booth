@@ -170,6 +170,7 @@ function openPhotoViewer(photoSet) {
 // Update photo display
 function updatePhotoDisplay() {
   if (!currentPhotoSet) return;
+  clearPendingSave(); // ไฟล์ที่รอกดบันทึกเป็นของรูปก่อนหน้า
   
   // Build photo array: composite, photo1, photo2, photo3, slideshow (แทน gif)
   const photos = [];
@@ -361,151 +362,131 @@ function stopSlideshow() {
   isSlideshowMode = false;
 }
 
-// Download current photo (รวม download GIF)
+// ===== DOWNLOAD / SAVE TO ALBUM =====
+// มือถือ: เปิด share sheet ให้กด "บันทึกรูปภาพ" -> เข้าอัลบั้ม (รวม GIF เคลื่อนไหว)
+// คอม: ดาวน์โหลดเข้าโฟลเดอร์ Downloads ตามปกติ
+const DOWNLOAD_LABEL = 'ดาวน์โหลดรูปนี้';
+const SAVE_TO_ALBUM_LABEL = 'บันทึกลงอัลบั้ม';
+// ไฟล์ที่โหลดเสร็จแล้วแต่ยังเปิด share sheet ไม่ได้ (iOS หมดสิทธิ์จากการกดเพราะรอนาน) -> รอกดอีกครั้ง
+let pendingSaveFile = null;
+
+function getDownloadBtn() {
+  return document.getElementById('downloadCurrentBtn');
+}
+
+function clearPendingSave() {
+  if (!pendingSaveFile) return;
+  pendingSaveFile = null;
+  const btn = getDownloadBtn();
+  btn.textContent = DOWNLOAD_LABEL;
+}
+
 document.getElementById('downloadCurrentBtn').addEventListener('click', async () => {
+  const btn = getDownloadBtn();
+
+  // กดครั้งที่สอง: ไฟล์พร้อมแล้ว เปิด share sheet ได้ทันที
+  if (pendingSaveFile) {
+    const file = pendingSaveFile;
+    clearPendingSave();
+    await saveFile(file);
+    return;
+  }
+
   const photos = getPhotoArray();
   const currentPhotoData = photos[currentPhotoIndex];
-  
-  const downloadBtn = document.getElementById('downloadCurrentBtn');
-  
-  // ถ้าเป็นรูปที่ 5 (slideshow) ให้ดาวน์โหลดเป็น GIF
-  if (currentPhotoData === 'slideshow') {
-    await downloadGIF();
-  } else if (currentPhotoIndex === 0 && currentPhotoSet.composite) {
-    // Download composite
-    const fullQualityUrl = optimizeCloudinaryUrl(currentPhotoData, 'full');
-    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_composite`, downloadBtn);
-  } else {
-    // Download individual photo
-    const fullQualityUrl = optimizeCloudinaryUrl(currentPhotoData, 'full');
-    await downloadPhoto(fullQualityUrl, `${currentPhotoSet.fileName}_${currentPhotoIndex}`, downloadBtn);
+  const isGif = currentPhotoData === 'slideshow';
+
+  let baseName;
+  if (isGif) baseName = currentPhotoSet.fileName;
+  else if (currentPhotoIndex === 0 && currentPhotoSet.composite) baseName = `${currentPhotoSet.fileName}_composite`;
+  else baseName = `${currentPhotoSet.fileName}_${currentPhotoIndex}`;
+
+  // จำไว้ว่ากดจากรูปไหน ถ้าผู้ใช้เปลี่ยนรูประหว่างรอ จะไม่ค้างปุ่ม "บันทึกลงอัลบั้ม" ผิดรูป
+  const requestedSet = currentPhotoSet;
+  const requestedIndex = currentPhotoIndex;
+
+  btn.disabled = true;
+  btn.textContent = isGif ? 'กำลังสร้าง GIF...' : 'กำลังเตรียมรูป...';
+
+  let file;
+  try {
+    const url = isGif
+      ? `/api/photos/${currentPhotoSet.id}/gif` // สร้าง on-demand
+      : optimizeCloudinaryUrl(currentPhotoData, 'full');
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const type = isGif ? 'image/gif' : (blob.type || 'image/jpeg');
+    file = new File([blob], `${baseName}.${extensionForType(type)}`, { type });
+  } catch (error) {
+    console.error('Download failed:', error);
+    alert(isGif ? 'สร้าง GIF ไม่สำเร็จ กรุณาลองอีกครั้ง' : 'ดาวน์โหลดไม่สำเร็จ กรุณาลองอีกครั้ง');
+    btn.disabled = false;
+    btn.textContent = DOWNLOAD_LABEL;
+    return;
+  }
+
+  btn.disabled = false;
+  btn.textContent = DOWNLOAD_LABEL;
+
+  const stillSamePhoto = requestedSet === currentPhotoSet && requestedIndex === currentPhotoIndex
+    && photoViewerModal.classList.contains('active');
+  const result = await saveFile(file);
+  if (result === 'needs-tap' && stillSamePhoto) {
+    pendingSaveFile = file;
+    btn.textContent = SAVE_TO_ALBUM_LABEL;
   }
 });
 
-// Download GIF (สร้าง on-demand)
-async function downloadGIF() {
-  try {
-    const downloadBtn = document.getElementById('downloadCurrentBtn');
-    const originalText = downloadBtn.textContent;
-    
-    if (downloadBtn) {
-      downloadBtn.disabled = true;
-      downloadBtn.textContent = 'กำลังสร้าง GIF...';
-    }
-    
-    // Request GIF from server
-    const response = await fetch(`/api/photos/${currentPhotoSet.id}/gif`);
-    
-    if (!response.ok) {
-      throw new Error('Failed to generate GIF');
-    }
-    
-    const blob = await response.blob();
-    
-    // Download GIF
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = `${currentPhotoSet.fileName}.gif`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-    
-    if (downloadBtn) {
-      downloadBtn.disabled = false;
-      downloadBtn.textContent = originalText;
-    }
-  } catch (error) {
-    console.error('GIF download failed:', error);
-    alert('สร้าง GIF ไม่สำเร็จ กรุณาลองอีกครั้ง');
-    
-    const downloadBtn = document.getElementById('downloadCurrentBtn');
-    if (downloadBtn) {
-      downloadBtn.disabled = false;
-      downloadBtn.textContent = 'ดาวน์โหลดรูปนี้';
-    }
-  }
+function extensionForType(type) {
+  const map = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif' };
+  return map[type] || 'jpg';
 }
 
-// Detect if device is iOS
+// Detect if device is iOS (รวม iPad ที่แสดงตัวเป็น Mac)
 function isIOS() {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 // Detect if device is mobile
 function isMobile() {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  return isIOS() || /Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
-// Download photo helper - optimized for mobile
-async function downloadPhoto(url, filename, buttonElement = null) {
-  const originalText = buttonElement ? buttonElement.textContent : null;
-  
-  try {
-    // แสดง loading state
-    if (buttonElement) {
-      buttonElement.disabled = true;
-      buttonElement.textContent = 'กำลังเตรียมรูป...';
-    }
-    
-    const response = await fetch(url);
-    const blob = await response.blob();
-    
-    // For mobile devices, try to save to gallery/camera roll
-    if (isMobile()) {
-      // Check if Web Share API with files is supported (Android, some iOS)
-      if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename + '.png', { type: blob.type })] })) {
-        const file = new File([blob], filename + '.png', { type: blob.type });
-        try {
-          await navigator.share({
-            files: [file],
-            title: 'บันทึกรูปภาพ',
-            text: 'บันทึกรูปนี้ลงในครังรูป'
-          });
-          return;
-        } catch (shareError) {
-          console.log('Share cancelled or failed:', shareError);
-          // Fall through to download method
-        }
-      }
-      
-      // For iOS - open in new tab so user can long-press to save
-      if (isIOS()) {
-        const blobUrl = URL.createObjectURL(blob);
-        const newWindow = window.open(blobUrl, '_blank');
-        if (newWindow) {
-          // Show instruction
-          setTimeout(() => {
-            alert('กดค้างที่รูปแล้วเลือก "บันทึกรูปภาพ" เพื่อเก็บลงครังรูป');
-          }, 500);
-        }
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-        return;
-      }
-    }
-    
-    // Fallback: Standard download for desktop and unsupported mobile browsers
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-  } catch (error) {
-    console.error('Download failed:', error);
-    alert('ดาวน์โหลดไม่สำเร็จ กรุณาลองอีกครั้ง');
-  } finally {
-    // คืนค่าปุ่มกลับเป็นปกติ
-    if (buttonElement && originalText) {
-      buttonElement.disabled = false;
-      buttonElement.textContent = originalText;
+// คืนค่า 'done' | 'needs-tap' (ต้องให้ผู้ใช้กดอีกครั้งเพื่อเปิด share sheet)
+async function saveFile(file) {
+  if (isMobile() && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return 'done';
+    } catch (error) {
+      if (error.name === 'AbortError') return 'done'; // ผู้ใช้ปิด share sheet เอง
+      if (error.name === 'NotAllowedError') return 'needs-tap'; // หมดสิทธิ์จากการกด (รอโหลดนาน)
+      console.warn('Share failed, falling back to download:', error);
     }
   }
+
+  // iOS รุ่นเก่าที่แชร์ไฟล์ไม่ได้: เปิดรูปในแท็บใหม่ให้กดค้างแล้ว "บันทึกรูปภาพ"
+  if (isIOS()) {
+    const blobUrl = URL.createObjectURL(file);
+    if (window.open(blobUrl, '_blank')) {
+      setTimeout(() => alert('กดค้างที่รูปแล้วเลือก "บันทึกรูปภาพ" เพื่อเก็บลงอัลบั้ม'), 500);
+    }
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    return 'done';
+  }
+
+  // คอม / Android ที่แชร์ไม่ได้: ดาวน์โหลดตามปกติ
+  const blobUrl = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  return 'done';
 }
 
 // ===== PRINT (admin only) =====
@@ -708,6 +689,7 @@ deleteSetBtn.addEventListener('click', async () => {
 document.querySelectorAll('#photoViewerModal .close-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     photoViewerModal.classList.remove('active');
+    clearPendingSave();
     // Stop slideshow
     stopSlideshow();
     // Reset photo display
@@ -741,6 +723,7 @@ document.addEventListener('keydown', (e) => {
     }
   } else if (e.key === 'Escape') {
     photoViewerModal.classList.remove('active');
+    clearPendingSave();
     // Stop slideshow
     stopSlideshow();
     // Reset photo display
